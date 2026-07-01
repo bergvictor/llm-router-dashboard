@@ -11,10 +11,13 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
-         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:5}
+         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:5;flex-wrap:wrap}
   h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
   .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
+  #navMonitor{color:var(--dim);text-decoration:none;font-size:12.5px;font-weight:600;padding:3px 10px;
+              border:1px solid var(--line);border-radius:999px;transition:color .15s,border-color .15s}
+  #navMonitor:hover{color:var(--acc);border-color:var(--acc)}
   .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;max-width:1400px;margin:0 auto}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-x:auto}
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
@@ -60,6 +63,10 @@
   .dd-row:last-child{border-bottom:0}
   .caret{display:inline-block;width:9px;transition:transform .15s ease;color:var(--dim)}
   .caret.open{transform:rotate(90deg)}
+  /* ---- docker containers ---- */
+  .dk-state{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;text-transform:capitalize}
+  #docker td.img,#docker td.ports{white-space:normal;word-break:break-all;color:var(--dim);font-size:12px}
+  #docker td.ports{max-width:260px}
   /* ---- per-hour chart ---- */
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
   .legi{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim)}
@@ -77,6 +84,7 @@
 <header>
   <span class="dot" id="statusDot" style="color:var(--dim)">●</span>
   <h1>LLM Router <span class="muted" style="font-weight:400">· live</span></h1>
+  <a href="monitor.html" id="navMonitor">Monitor →</a>
   <div class="right">
     <span id="throughput" class="muted">– req/min</span>
     <span id="updated" class="muted">connecting…</span>
@@ -100,6 +108,8 @@
   <div class="card col5"><h2>Capacity — local GPU nodes</h2><div id="nodes"></div></div>
   <div class="card col7"><h2>GPU detail — local hardware (RTX)</h2><div id="gpu"></div></div>
 
+  <div class="card col12"><h2>Docker containers — local</h2><div id="docker"></div></div>
+
   <div class="card col12"><h2>Cloud share — which pool is actually serving</h2>
     <div class="sub" id="cloudShareHead" style="margin-bottom:8px">–</div>
     <div id="cloudShare"></div></div>
@@ -110,7 +120,6 @@
       <th class="num">Attempts</th><th class="num">Wins</th><th class="num">Win share</th><th class="num">Success</th>
       <th class="num">429/4xx</th><th class="num">5xx</th><th>Serving tasks</th><th>Status</th>
     </tr></thead><tbody id="cloudTable"></tbody></table>
-    <div class="sub">local-first → the chain is tried top-to-bottom, each pool a <b>separate free quota</b>; a 429/5xx trips a ~45s cooldown and the router skips to the next pool (no waiting). <b>Wins</b> = requests this pool actually answered; <b>Attempts</b> includes hops that 429'd and fell through. <b>Click any row</b> to expand its callers / tasks / models breakdown.</div>
   </div>
 
   <div class="card col12"><h2>Cloud calls per hour (last ~24h)</h2>
@@ -206,6 +215,7 @@ async function poll(){
   }).join('') || '<div class="muted">no node data</div>';
 
   renderGpu(m.gpu);
+  renderDocker(m.docker);
   renderCloud(stats, health);
   renderHourly(stats);
 
@@ -260,6 +270,38 @@ function renderGpu(gpus){
   }).join('');
 }
 
+// ---------- 1b) Docker containers ----------
+function renderDocker(dk){
+  const el=$('docker');
+  dk=dk||{};
+  if(dk.ok!==true){
+    const err=dk.err?esc(dk.err):'docker not installed';
+    el.innerHTML=`<div class="muted">Docker daemon not running <span style="color:var(--dim)">· ${err}</span></div>`;
+    return;
+  }
+  const cs=Array.isArray(dk.containers)?dk.containers:[];
+  if(!cs.length){ el.innerHTML='<div class="muted">no containers</div>'; return; }
+  const stateStyle=st=>{
+    const s=String(st==null?'':st).toLowerCase();
+    if(s==='running') return 'background:#12291f;color:var(--ok)';
+    if(s==='exited'||s==='dead') return 'background:#2b1418;color:var(--bad)';
+    if(s==='paused'||s==='created') return 'background:#2a2413;color:var(--warn)';
+    return 'background:#141c2a;color:var(--dim)';
+  };
+  const rows=cs.map(c=>{
+    const st=c.state==null?'':c.state;
+    return `<tr>
+      <td><b>${esc(c.name)||'–'}</b></td>
+      <td class="img"><span title="${esc(c.image)}">${esc(c.image)||'–'}</span></td>
+      <td><span class="dk-state" style="${stateStyle(st)}">${esc(st)||'?'}</span></td>
+      <td class="muted">${esc(c.status)||'–'}</td>
+      <td class="ports">${esc(c.ports)||'<span class="muted">–</span>'}</td></tr>`;
+  }).join('');
+  el.innerHTML=`<table><thead><tr>
+      <th>Name</th><th>Image</th><th>State</th><th>Status</th><th>Ports</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 // ---------- 2) Cloud pools table + drill-down ----------
 function renderCloud(stats, health){
   const pools=stats.pools||{};
@@ -273,15 +315,15 @@ function renderCloud(stats, health){
 
   const totalServed=Object.values(pools).reduce((a,s)=>a+(s.served||0),0);
 
-  // compact share — which pool is actually serving
-  const shareRows=order.map(p=>({p,s:pools[p]||{}})).filter(x=>(x.s.served||0)>0)
-                       .sort((a,b)=>(b.s.served||0)-(a.s.served||0));
+  // compact share — which pool is actually serving; ordered by CHAIN RANK (fallback priority), not win count
+  const shareRows=order.map(p=>({p,s:pools[p]||{}})).filter(x=>(x.s.served||0)>0);
   $('cloudShareHead').innerHTML = totalServed
-     ? `${fmt(totalServed)} cloud calls served · ${shareRows.length} pool${shareRows.length===1?'':'s'} active this session`
+     ? `${fmt(totalServed)} cloud calls served · ${shareRows.length} pool${shareRows.length===1?'':'s'} active this session · in fallback-rank order`
      : 'local-first is handling everything — no overflow to cloud yet this session';
   $('cloudShare').innerHTML = shareRows.map(({p,s})=>{
      const pct=100*(s.served||0)/(totalServed||1);
-     return `<div class="kv"><span><span class="legsw" style="background:${poolColor(p)}"></span> <b>${esc(p)}</b> <span class="muted">${esc(chainModel[p]||topModel(s))}</span></span>
+     const rank=chain.includes(p)?(chain.indexOf(p)+1):'–';
+     return `<div class="kv"><span><span class="muted mono" style="margin-right:4px">${rank}.</span><span class="legsw" style="background:${poolColor(p)}"></span> <b>${esc(p)}</b> <span class="muted">${esc(chainModel[p]||topModel(s))}</span></span>
        <span class="flex gap6"><span class="bar" style="width:130px"><i style="width:${pct}%;background:${poolColor(p)}"></i></span>
        <span class="muted mono" style="min-width:78px;text-align:right">${fmt(s.served)} · ${pct.toFixed(0)}%</span></span></div>`;
   }).join('') || '<div class="muted">When the local GPUs are free, no requests reach the cloud. Overflow (congestion / local down) shows up here per pool.</div>';
