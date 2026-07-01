@@ -216,13 +216,16 @@ function renderFeed(){
     const stTxt=(st==null||st==="")?'–':esc(st);
     const caller=(c.caller==null||c.caller==='')?'–':esc(c.caller);
     const task=(c.task==null||c.task==='')?'–':esc(c.task);
-    const model=(c.requested==null||c.requested==='')?'–':esc(c.requested);
+    const _mn=(c.model!=null&&c.model!=='')?c.model:((c.requested!=null&&c.requested!=='')?c.requested:'–');
+    const model=esc(_mn);
+    const modelTitle=esc('requested: '+(c.requested==null?'-':c.requested)+'  →  served: '+_mn);
+    const poolTag=(isCloud(c)&&c.pool)?`<span class="mode" style="color:var(--cloud)">${esc(c.pool)}</span>`:'';
     return `<tr>
       <td><span class="mono">${esc(fmtClock(c.t))}</span> <span class="rel">${esc(relAgo(c.t))}</span></td>
       <td><b>${caller}</b></td>
       <td>${task}</td>
-      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis"><span title="${model}">${model}</span></td>
-      <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${mode}</td>
+      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis"><span title="${modelTitle}">${model}</span></td>
+      <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${poolTag}${mode}</td>
       <td class="num" style="color:${statusCol(st)};font-weight:600">${stTxt}</td>
       <td class="num" style="color:${latencyCol(c.ms)}">${esc(fmtLatency(c.ms))}</td>
     </tr>`;
