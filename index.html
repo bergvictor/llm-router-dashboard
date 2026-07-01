@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LLM Router — Live Dashboard</title>
+<style>
+  :root{--bg:#0b0f17;--card:#131a26;--card2:#0f1521;--line:#1f2a3a;--fg:#e6edf6;--dim:#8fa3bd;
+        --ok:#2ec77a;--warn:#ffb84d;--bad:#ff5d6c;--acc:#4da3ff;--cloud:#b98cff;--local:#39d3a3;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
+         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:5}
+  h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
+  .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
+  .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
+  .col3{grid-column:span 3} .col4{grid-column:span 4} .col5{grid-column:span 5} .col6{grid-column:span 6}
+  .col7{grid-column:span 7} .col8{grid-column:span 8} .col12{grid-column:span 12}
+  @media(max-width:900px){.col3,.col4,.col5,.col6,.col7,.col8{grid-column:span 12}}
+  .big{font-size:30px;font-weight:680;line-height:1}
+  .sub{color:var(--dim);font-size:12px;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{height:7px;border-radius:5px;background:#1b2536;overflow:hidden;display:flex;min-width:80px}
+  .bar > i{display:block;height:100%}
+  .chip{display:inline-block;background:#1b2536;border:1px solid var(--line);border-radius:999px;
+        padding:1px 8px;margin:2px 3px 0 0;font-size:11px;color:var(--dim)}
+  .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
+  .pools{display:flex;flex-wrap:wrap;gap:6px}
+  .pool{padding:3px 9px;border-radius:8px;background:var(--card2);border:1px solid var(--line);font-size:12px}
+  svg{display:block;width:100%;height:60px}
+  .foot{padding:10px 20px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
+  .kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+  .kv:last-child{border-bottom:0}
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="statusDot" style="color:var(--dim)">●</span>
+  <h1>LLM Router <span class="muted" style="font-weight:400">· live</span></h1>
+  <div class="right">
+    <span id="throughput" class="muted">– req/min</span>
+    <span id="updated" class="muted">connecting…</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card col3"><h2>Router</h2><div class="big" id="kRouter">–</div><div class="sub" id="kPort">port –</div></div>
+  <div class="card col3"><h2>Requests (session)</h2><div class="big" id="kReq">–</div><div class="sub" id="kRate">– req/min now</div></div>
+  <div class="card col3"><h2>Success rate</h2><div class="big" id="kOk">–</div><div class="sub" id="kErr">– errors</div></div>
+  <div class="card col3"><h2>Cloud spend today</h2><div class="big" id="kSpend">–</div><div class="sub" id="kBudget">budget –</div></div>
+
+  <div class="card col8"><h2>Throughput (req/min, last ~5 min)</h2><svg id="spark" viewBox="0 0 600 60" preserveAspectRatio="none"></svg></div>
+  <div class="card col4"><h2>Local vs Cloud (this session)</h2>
+    <div class="flex" style="margin-bottom:8px"><span class="pill" style="background:#12291f;color:var(--local)">Local <b id="locPct">–</b></span>
+      <span class="pill" style="background:#20182e;color:var(--cloud)">Cloud <b id="cldPct">–</b></span></div>
+    <div class="bar" style="height:12px"><i id="locBar" style="background:var(--local)"></i><i id="cldBar" style="background:var(--cloud)"></i></div>
+    <div class="sub"><span id="locN">–</span> local · <span id="cldN">–</span> cloud calls</div>
+  </div>
+
+  <div class="card col5"><h2>Capacity — local GPU nodes</h2><div id="nodes"></div></div>
+  <div class="card col7"><h2>Free cloud fallback pools (chain order)</h2><div class="pools" id="pools"></div>
+    <div class="sub">local-first → these free pools on overflow → paid backstop</div></div>
+
+  <div class="card col12"><h2>Callers — who is using the router</h2>
+    <table><thead><tr><th>Caller</th><th class="num">Requests</th><th>Local / Cloud</th><th>Success</th><th>Tasks</th></tr></thead>
+    <tbody id="callers"></tbody></table></div>
+</div>
+<div class="foot">Cloudflare Pages · data via Supabase (pushed by the router every ~15s) · <span id="ageNote">–</span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SUPA_URL="https://mnzdcxcolxiqprwkujxy.supabase.co";
+const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uemRjeGNvbHhpcXByd2t1anh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2Mzg3MDAsImV4cCI6MjA4ODIxNDcwMH0.JuLvuOd08iSh5yDrrVbarKEr6LCtkRT5K6gA1_nhEcM";
+let lastTs=null, prev=null, spark=[], SPARKMAX=40;
+const CHAIN=["groq","cerebras","mistral","google","github","cloudflare","ollama-cloud","zai","cohere","huggingface","nvidia","openrouter"];
+
+function sumStatus(c,k){let n=0;for(const v of Object.values(c))n+=(v.status&&v.status[k])||0;return n;}
+function sumNodes(c){let loc=0,cld=0;for(const v of Object.values(c)){for(const[k,n]of Object.entries(v.nodes||{})){if(k==="cloud")cld+=n;else loc+=n;}}return{loc,cld};}
+function totalReq(c){let n=0;for(const v of Object.values(c))n+=v.requests||0;return n;}
+function fmt(n){return (n||0).toLocaleString();}
+
+async function poll(){
+  let rec;
+  try{
+    const row=await fetch(SUPA_URL+"/rest/v1/router_metrics?id=eq.1&select=metrics,updated_at",
+      {headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY},cache:"no-store"}).then(r=>r.json());
+    rec=(row&&row[0])||{};
+  }catch(e){ $('statusDot').style.color='var(--bad)'; $('updated').textContent='no data feed'; $('kRouter').textContent='?'; return; }
+  const m=rec.metrics||{}, health=m.health||{}, stats=m.stats||{};
+  const callers=stats.callers||{}, servers=stats.servers||{}, cloud=stats.cloud||{};
+  const age = rec.updated_at? (Date.now()-new Date(rec.updated_at).getTime())/1000 : 1e9;
+  const stale = age>60;
+  const fresh = rec.updated_at && rec.updated_at!==lastTs;
+
+  const ok = health.router==='ok' && !stale;
+  $('statusDot').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
+  $('kRouter').textContent = health.router==='ok'?(stale?'STALE':'OK'):'DOWN';
+  $('kPort').textContent = 'port '+(health.port||'–')+' · '+Object.values(health.servers||{}).filter(v=>v==='up').length+' local up · '+Object.values(health.servers||{}).filter(v=>v==='cloud').length+' cloud pools';
+  $('updated').textContent = (stale?'⚠ stale ':'updated ')+Math.round(age)+'s ago';
+  $('ageNote').textContent = 'last push '+Math.round(age)+'s ago'+(stale?' — pusher daemon may be down':'');
+
+  const tot=totalReq(callers), o2=sumStatus(callers,'2xx'), e4=sumStatus(callers,'4xx'), e5=sumStatus(callers,'5xx');
+  const okRate = tot?(100*o2/(o2+e4+e5||1)):0;
+  $('kReq').textContent=fmt(tot);
+  $('kOk').textContent=(tot?okRate.toFixed(1):'–')+'%';
+  $('kOk').style.color = okRate>=95?'var(--ok)':okRate>=85?'var(--warn)':'var(--bad)';
+  $('kErr').textContent=fmt(e4)+' 4xx · '+fmt(e5)+' 5xx';
+  const spend=cloud.spent_today_usd||0, budget=cloud.daily_budget_usd||0;
+  $('kSpend').textContent='$'+spend.toFixed(2);
+  $('kSpend').style.color = spend===0?'var(--ok)':spend<budget*0.5?'var(--warn)':'var(--bad)';
+  $('kBudget').textContent='budget $'+budget.toFixed(0)+(cloud.paused?' · PAUSED':'')+' · inflight ~$'+(cloud.inflight_est_usd||0).toFixed(2);
+
+  // throughput: only recompute when a NEW push arrives (updated_at changed)
+  if(fresh){
+    if(prev && prev.ts){ const dt=(new Date(rec.updated_at)-new Date(prev.ts))/1000;
+      if(dt>0){ const rpm=Math.max(0,(tot-prev.tot)/dt*60); $('throughput').textContent=rpm.toFixed(0)+' req/min';
+        $('kRate').textContent=rpm.toFixed(0)+' req/min now'; spark.push(rpm); if(spark.length>SPARKMAX)spark.shift(); drawSpark(); } }
+    prev={ts:rec.updated_at, tot}; lastTs=rec.updated_at;
+  }
+
+  const {loc,cld}=sumNodes(callers), tt=loc+cld||1;
+  $('locPct').textContent=(100*loc/tt).toFixed(0)+'%'; $('cldPct').textContent=(100*cld/tt).toFixed(0)+'%';
+  $('locBar').style.width=(100*loc/tt)+'%'; $('cldBar').style.width=(100*cld/tt)+'%';
+  $('locN').textContent=fmt(loc); $('cldN').textContent=fmt(cld);
+
+  $('nodes').innerHTML=Object.entries(servers).map(([url,s])=>{
+    const q=s.queued||0,a=s.active||0,col=q>0?'var(--warn)':a>0?'var(--acc)':'var(--dim)';
+    const name=url.replace('http://','').replace(/\/$/,'');
+    return `<div class="kv"><span><b>${name}</b> <span class="muted">${(s.active_models||[]).join(', ')||s.last_model||'idle'}</span></span>
+      <span class="flex gap6"><span class="pill" style="color:${col};background:#141c2a">${a} active · ${q} queued</span>
+      <span class="muted" style="min-width:90px;text-align:right">${fmt(s.served)} served</span></span></div>`;
+  }).join('') || '<div class="muted">no node data</div>';
+
+  const hs=health.servers||{};
+  $('pools').innerHTML=CHAIN.filter(p=>hs[p]).map((p,i)=>`<span class="pool"><span class="muted">${i+1}.</span> ${p}</span>`).join('');
+
+  const rows=Object.entries(callers).filter(([k])=>k!=='-').sort((a,b)=>(b[1].requests||0)-(a[1].requests||0));
+  $('callers').innerHTML=rows.map(([name,c])=>{
+    let l=0,cl=0; for(const[k,v]of Object.entries(c.nodes||{})){if(k==='cloud')cl+=v;else l+=v;}
+    const t=l+cl||1, st=c.status||{}, s2=st['2xx']||0,s4=st['4xx']||0,s5=st['5xx']||0,sT=s2+s4+s5||1, okr=100*s2/sT;
+    const tasks=Object.entries(c.tasks||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${t} ${fmt(n)}</span>`).join('');
+    return `<tr><td><b>${name}</b></td><td class="num">${fmt(c.requests)}</td>
+      <td><div class="bar" title="${l} local / ${cl} cloud"><i style="width:${100*l/t}%;background:var(--local)"></i><i style="width:${100*cl/t}%;background:var(--cloud)"></i></div></td>
+      <td><span style="color:${okr>=95?'var(--ok)':okr>=85?'var(--warn)':'var(--bad)'}">${okr.toFixed(0)}%</span>
+          <span class="muted">${s4?(' · '+s4+' 4xx'):''}${s5?(' · '+s5+' 5xx'):''}</span></td>
+      <td>${tasks}</td></tr>`;
+  }).join('') || '<tr><td class="muted" colspan="5">no traffic yet</td></tr>';
+}
+
+function drawSpark(){
+  const w=600,h=60,mx=Math.max(1,...spark);
+  const pts=spark.map((v,i)=>`${(i/(SPARKMAX-1))*w},${h-(v/mx)*(h-6)-3}`).join(' ');
+  $('spark').innerHTML=`<polyline fill="none" stroke="var(--acc)" stroke-width="2" points="${pts}"/>`+
+    `<polyline fill="rgba(77,163,255,.12)" stroke="none" points="0,${h} ${pts} ${w},${h}"/>`;
+}
+poll(); setInterval(poll,4000);
+</script>
+</body>
+</html>
