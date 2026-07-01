@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LLM Router — Monitor</title>
+<style>
+  :root{--bg:#0b0f17;--card:#131a26;--card2:#0f1521;--line:#1f2a3a;--fg:#e6edf6;--dim:#8fa3bd;
+        --ok:#2ec77a;--warn:#ffb84d;--bad:#ff5d6c;--acc:#4da3ff;--cloud:#b98cff;--local:#39d3a3;--old:#2fd4c4;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
+         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:5;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
+  .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
+  a.nav{color:var(--acc);text-decoration:none;font-size:12.5px;font-weight:600}
+  a.nav:hover{text-decoration:underline}
+  .wrap{padding:18px 20px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-x:auto}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
+  .mono{font-variant-numeric:tabular-nums}
+  .foot{padding:10px 20px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
+  /* ---- summary strip ---- */
+  .strip{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;margin-bottom:14px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;display:flex;align-items:baseline;gap:8px}
+  .stat b{font-size:20px;font-variant-numeric:tabular-nums;line-height:1}
+  .stat span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  /* ---- filter buttons ---- */
+  .filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .fbtn{background:var(--card2);border:1px solid var(--line);color:var(--dim);border-radius:999px;
+        padding:5px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .12s ease}
+  .fbtn:hover{border-color:var(--acc);color:var(--fg)}
+  .fbtn.active{background:#16283e;border-color:var(--acc);color:var(--fg)}
+  /* ---- feed table ---- */
+  #feed tr:hover td{background:#161f2e}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .b-cloud{background:#20182e;color:var(--cloud)}
+  .b-local{background:#12291f;color:var(--local)}
+  .b-old{background:#0e2a29;color:var(--old)}
+  .b-other{background:#1b2536;color:var(--dim)}
+  .mode{font-size:10.5px;color:var(--dim);margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+  .rel{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+  .empty{color:var(--dim);text-align:center;padding:36px 10px;font-size:13.5px}
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="statusDot" style="color:var(--dim)">●</span>
+  <h1>LLM Router <span class="muted" style="font-weight:400">· Monitor</span></h1>
+  <div class="right">
+    <span id="updated" class="muted">connecting…</span>
+    <a class="nav" href="index.html">← Summary</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="strip" id="strip">
+    <div class="stat"><b id="sTotal">–</b><span>calls</span></div>
+    <div class="stat"><b id="s2xx" style="color:var(--ok)">–</b><span>2xx</span></div>
+    <div class="stat"><b id="s4xx" style="color:var(--warn)">–</b><span>4xx</span></div>
+    <div class="stat"><b id="s5xx" style="color:var(--bad)">–</b><span>5xx</span></div>
+    <div class="stat"><b id="sLocal" style="color:var(--local)">–</b><span>local</span></div>
+    <div class="stat"><b id="sCloud" style="color:var(--cloud)">–</b><span>cloud</span></div>
+  </div>
+
+  <div class="filters">
+    <button class="fbtn active" data-filter="all">All</button>
+    <button class="fbtn" data-filter="errors">Errors only</button>
+    <button class="fbtn" data-filter="cloud">Cloud only</button>
+  </div>
+
+  <div class="card">
+    <h2>Live call feed <span class="muted" style="text-transform:none;letter-spacing:0">· newest first</span></h2>
+    <table>
+      <thead><tr>
+        <th>Time</th><th>Caller</th><th>Task</th><th>Model</th><th>Route</th>
+        <th class="num">Status</th><th class="num">Latency</th>
+      </tr></thead>
+      <tbody id="feed"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="foot">Cloudflare Pages · data via Supabase · the feed is pushed by the router about every ~15s and holds the last 100 calls (it resets on router restart) · <span id="ageNote">–</span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SUPA_URL="https://mnzdcxcolxiqprwkujxy.supabase.co";
+const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uemRjeGNvbHhpcXByd2t1anh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2Mzg3MDAsImV4cCI6MjA4ODIxNDcwMH0.JuLvuOd08iSh5yDrrVbarKEr6LCtkRT5K6gA1_nhEcM";
+
+let FILTER="all";       // all | errors | cloud
+let lastRecent=[];      // last recent[] we rendered (for re-filter without refetch)
+let lastAge=1e9;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// ---- classify the route of a call from its node field ----
+function routeInfo(node){
+  const n=String(node==null?'':node).toLowerCase();
+  if(n==="cloud")                       return {cls:"b-cloud", label:"cloud"};
+  if(n.includes("levitin")||n.includes("old")) return {cls:"b-old", label:"old-laptop"};
+  if(n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost")) return {cls:"b-local", label:"local"};
+  if(node==null||node==="")             return {cls:"b-other", label:"?"};
+  return {cls:"b-local", label:String(node)}; // any other gpu url => a local node
+}
+const isCloud = c => String(c&&c.node).toLowerCase()==="cloud";
+
+// ---- time helpers ----
+function fmtClock(t){
+  if(t==null||isNaN(+t)) return "–";
+  const d=new Date((+t)*1000);
+  if(isNaN(d.getTime())) return "–";
+  const p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+function relAgo(t){
+  if(t==null||isNaN(+t)) return "";
+  let s=Math.max(0,Math.round(Date.now()/1000-(+t)));
+  if(s<60)   return s+"s ago";
+  if(s<3600) return Math.round(s/60)+"m ago";
+  if(s<86400)return Math.round(s/3600)+"h ago";
+  return Math.round(s/86400)+"d ago";
+}
+function fmtLatency(ms){
+  if(ms==null||isNaN(+ms)) return "–";
+  ms=+ms;
+  return ms<1000 ? ms+"ms" : (ms/1000).toFixed(ms<10000?1:0)+"s";
+}
+function latencyCol(ms){
+  if(ms==null||isNaN(+ms)) return "var(--dim)";
+  ms=+ms;
+  return ms>15000 ? "var(--bad)" : ms>5000 ? "var(--warn)" : "var(--fg)";
+}
+function statusCol(st){
+  const s=+st;
+  if(isNaN(s)) return "var(--dim)";
+  if(s>=500)   return "var(--bad)";
+  if(s>=400)   return "var(--warn)";
+  if(s>=200&&s<300) return "var(--ok)";
+  return "var(--dim)";
+}
+
+async function poll(){
+  let rec;
+  try{
+    const row=await fetch(SUPA_URL+"/rest/v1/router_metrics?id=eq.1&select=metrics,updated_at",
+      {headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY},cache:"no-store"}).then(r=>r.json());
+    rec=(row&&row[0])||{};
+  }catch(e){
+    $('statusDot').style.color='var(--bad)'; $('updated').textContent='no data feed'; return;
+  }
+  const m=rec.metrics||{}, stats=m.stats||{};
+  const recent=Array.isArray(stats.recent)?stats.recent:[];
+  lastRecent=recent;
+
+  const age = rec.updated_at? (Date.now()-new Date(rec.updated_at).getTime())/1000 : 1e9;
+  lastAge=age;
+  const stale = age>60;
+  const health=m.health||{};
+  $('statusDot').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
+  $('updated').textContent = (rec.updated_at? (stale?'⚠ stale ':'updated ')+Math.round(age)+'s ago' : 'no updated_at — stale');
+  $('ageNote').textContent = rec.updated_at ? ('last push '+Math.round(age)+'s ago'+(stale?' — pusher daemon may be down':'')) : 'no push timestamp — feed may be stale';
+
+  renderSummary(recent);
+  renderFeed();
+}
+
+function renderSummary(recent){
+  let o2=0,e4=0,e5=0,loc=0,cld=0;
+  for(const c of recent){
+    const s=+((c&&c.status));
+    if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
+    if(isCloud(c)) cld++; else loc++;
+  }
+  $('sTotal').textContent=recent.length;
+  $('s2xx').textContent=o2;
+  $('s4xx').textContent=e4;
+  $('s5xx').textContent=e5;
+  $('sLocal').textContent=loc;
+  $('sCloud').textContent=cld;
+}
+
+function passFilter(c){
+  if(FILTER==="errors") return (+((c&&c.status)))>=400;
+  if(FILTER==="cloud")  return isCloud(c);
+  return true;
+}
+
+function renderFeed(){
+  const feed=$('feed');
+  if(!lastRecent.length){
+    feed.innerHTML='<tr><td colspan="7"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
+    return;
+  }
+  const rows=lastRecent.filter(passFilter);
+  if(!rows.length){
+    const what = FILTER==="errors" ? "no errors in the current buffer — all recent calls succeeded"
+               : FILTER==="cloud"  ? "no cloud calls in the current buffer — local nodes are handling everything"
+               : "no calls to show";
+    feed.innerHTML='<tr><td colspan="7"><div class="empty">'+esc(what)+'</div></td></tr>';
+    return;
+  }
+  feed.innerHTML=rows.map(c=>{
+    c=c||{};
+    const ri=routeInfo(c.node);
+    const mode=c.mode ? `<span class="mode">${esc(c.mode)}</span>` : '';
+    const st=c.status;
+    const stTxt=(st==null||st==="")?'–':esc(st);
+    const caller=(c.caller==null||c.caller==='')?'–':esc(c.caller);
+    const task=(c.task==null||c.task==='')?'–':esc(c.task);
+    const model=(c.requested==null||c.requested==='')?'–':esc(c.requested);
+    return `<tr>
+      <td><span class="mono">${esc(fmtClock(c.t))}</span> <span class="rel">${esc(relAgo(c.t))}</span></td>
+      <td><b>${caller}</b></td>
+      <td>${task}</td>
+      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis"><span title="${model}">${model}</span></td>
+      <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${mode}</td>
+      <td class="num" style="color:${statusCol(st)};font-weight:600">${stTxt}</td>
+      <td class="num" style="color:${latencyCol(c.ms)}">${esc(fmtLatency(c.ms))}</td>
+    </tr>`;
+  }).join('');
+}
+
+// filter buttons — client-side, no reload
+document.querySelectorAll('.fbtn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    FILTER=b.getAttribute('data-filter');
+    document.querySelectorAll('.fbtn').forEach(x=>x.classList.toggle('active',x===b));
+    renderFeed(); // instant re-filter from the buffer we already have
+  });
+});
+
+poll(); setInterval(poll,4000);
+// tick relative times / stale note between polls so "Ns ago" stays live
+setInterval(()=>{ if(lastRecent.length) renderFeed(); },1000);
+</script>
+</body>
+</html>
