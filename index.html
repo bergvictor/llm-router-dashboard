@@ -15,8 +15,8 @@
   h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
   .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
-  .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;max-width:1400px;margin:0 auto}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-x:auto}
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
   .col3{grid-column:span 3} .col4{grid-column:span 4} .col5{grid-column:span 5} .col6{grid-column:span 6}
   .col7{grid-column:span 7} .col8{grid-column:span 8} .col12{grid-column:span 12}
@@ -27,18 +27,50 @@
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
   th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-  .bar{height:7px;border-radius:5px;background:#1b2536;overflow:hidden;display:flex;min-width:80px}
+  .bar{height:7px;border-radius:5px;background:#1b2536;overflow:hidden;display:inline-flex;min-width:80px;vertical-align:middle}
   .bar > i{display:block;height:100%}
   .chip{display:inline-block;background:#1b2536;border:1px solid var(--line);border-radius:999px;
         padding:1px 8px;margin:2px 3px 0 0;font-size:11px;color:var(--dim)}
   .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
-  .pools{display:flex;flex-wrap:wrap;gap:6px}
-  .pool{padding:3px 9px;border-radius:8px;background:var(--card2);border:1px solid var(--line);font-size:12px}
   svg{display:block;width:100%;height:60px}
   .foot{padding:10px 20px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
-  .kv{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+  .kv{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
   .kv:last-child{border-bottom:0}
+  .mono{font-variant-numeric:tabular-nums}
+  /* ---- GPU detail card ---- */
+  .gpu{padding:10px 0;border-bottom:1px solid var(--line)}
+  .gpu:last-child{border-bottom:0;padding-bottom:0}
+  .gpu:first-child{padding-top:0}
+  .gpu-name{font-weight:650;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .gbar{height:10px;border-radius:6px;background:#1b2536;overflow:hidden;width:100%}
+  .gbar > i{display:block;height:100%;transition:width .4s ease}
+  .glabel{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin:8px 0 3px}
+  .gstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-top:10px}
+  .gstat{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;text-align:center}
+  .gstat b{display:block;font-size:15px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .gstat span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  /* ---- pool drill-down ---- */
+  #cloudTable tr[data-pool]{cursor:pointer}
+  #cloudTable tr[data-pool]:hover{background:#161f2e}
+  tr.detail > td{background:var(--card2);border-bottom:1px solid var(--line);padding:12px 16px;white-space:normal}
+  .dd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .dd-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:0 0 6px}
+  .dd-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
+  .dd-row:last-child{border-bottom:0}
+  .caret{display:inline-block;width:9px;transition:transform .15s ease;color:var(--dim)}
+  .caret.open{transform:rotate(90deg)}
+  /* ---- per-hour chart ---- */
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+  .legi{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim)}
+  .legsw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .hchart{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:6px}
+  .hcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0;height:100%}
+  .hstack{width:100%;max-width:34px;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden}
+  .hstack > i{display:block;width:100%}
+  .hstack.empty{background:#141c2a;height:2px;border-radius:2px}
+  .hx{font-size:10px;color:var(--dim);margin-top:5px;font-variant-numeric:tabular-nums}
+  .htot{font-size:9.5px;color:var(--dim);margin-bottom:3px;font-variant-numeric:tabular-nums;min-height:12px}
 </style>
 </head>
 <body>
@@ -61,13 +93,31 @@
   <div class="card col4"><h2>Local vs Cloud (this session)</h2>
     <div class="flex" style="margin-bottom:8px"><span class="pill" style="background:#12291f;color:var(--local)">Local <b id="locPct">–</b></span>
       <span class="pill" style="background:#20182e;color:var(--cloud)">Cloud <b id="cldPct">–</b></span></div>
-    <div class="bar" style="height:12px"><i id="locBar" style="background:var(--local)"></i><i id="cldBar" style="background:var(--cloud)"></i></div>
+    <div class="bar" style="height:12px;width:100%"><i id="locBar" style="background:var(--local)"></i><i id="cldBar" style="background:var(--cloud)"></i></div>
     <div class="sub"><span id="locN">–</span> local · <span id="cldN">–</span> cloud calls</div>
   </div>
 
   <div class="card col5"><h2>Capacity — local GPU nodes</h2><div id="nodes"></div></div>
-  <div class="card col7"><h2>Free cloud fallback pools (chain order)</h2><div class="pools" id="pools"></div>
-    <div class="sub">local-first → these free pools on overflow → paid backstop</div></div>
+  <div class="card col7"><h2>GPU detail — local hardware (RTX)</h2><div id="gpu"></div></div>
+
+  <div class="card col12"><h2>Cloud share — which pool is actually serving</h2>
+    <div class="sub" id="cloudShareHead" style="margin-bottom:8px">–</div>
+    <div id="cloudShare"></div></div>
+
+  <div class="card col12"><h2>Cloud pools — usage &amp; health (free fallback chain) · <span class="muted" style="text-transform:none;letter-spacing:0">click a pool to see where its calls come from</span></h2>
+    <table><thead><tr>
+      <th class="num">#</th><th>Pool</th><th>Model</th>
+      <th class="num">Attempts</th><th class="num">Wins</th><th class="num">Win share</th><th class="num">Success</th>
+      <th class="num">429/4xx</th><th class="num">5xx</th><th>Serving tasks</th><th>Status</th>
+    </tr></thead><tbody id="cloudTable"></tbody></table>
+    <div class="sub">local-first → the chain is tried top-to-bottom, each pool a <b>separate free quota</b>; a 429/5xx trips a ~45s cooldown and the router skips to the next pool (no waiting). <b>Wins</b> = requests this pool actually answered; <b>Attempts</b> includes hops that 429'd and fell through. <b>Click any row</b> to expand its callers / tasks / models breakdown.</div>
+  </div>
+
+  <div class="card col12"><h2>Cloud calls per hour (last ~24h)</h2>
+    <div id="hourLegend" class="legend"></div>
+    <div id="hourChart"></div>
+    <div class="sub" id="hourNote" style="margin-top:8px"></div>
+  </div>
 
   <div class="card col12"><h2>Callers — who is using the router</h2>
     <table><thead><tr><th>Caller</th><th class="num">Requests</th><th>Local / Cloud</th><th>Success</th><th>Tasks</th></tr></thead>
@@ -82,10 +132,27 @@ const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 let lastTs=null, prev=null, spark=[], SPARKMAX=40;
 const CHAIN=["groq","cerebras","mistral","google","github","cloudflare","ollama-cloud","zai","cohere","huggingface","nvidia","openrouter"];
 
+// shared pool -> colour map (reused by drill-down + share + per-hour chart legend/segments)
+const POOL_COLORS={groq:"#4da3ff",cerebras:"#39d3a3",mistral:"#ff8f4d",google:"#ffd24d",
+  github:"#b98cff",cloudflare:"#ff7a45",ollama:"#7bd1ff","ollama-cloud":"#7bd1ff",
+  zai:"#ff5d9e",cohere:"#2ec77a",huggingface:"#ffb84d",nvidia:"#76d94d",openrouter:"#8f9bff"};
+const PALETTE=["#4da3ff","#39d3a3","#ff8f4d","#ffd24d","#b98cff","#ff7a45","#7bd1ff","#ff5d9e","#2ec77a","#ffb84d","#76d94d","#8f9bff","#5de0c0","#e06de0"];
+function poolColor(p){
+  if(POOL_COLORS[p]) return POOL_COLORS[p];
+  let h=0; for(let i=0;i<p.length;i++) h=(h*31+p.charCodeAt(i))>>>0;
+  return PALETTE[h%PALETTE.length];
+}
+
+// module-level open-set for pool drill-down; survives the 4s refresh
+const openPools=new Set();
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function sumStatus(c,k){let n=0;for(const v of Object.values(c))n+=(v.status&&v.status[k])||0;return n;}
 function sumNodes(c){let loc=0,cld=0;for(const v of Object.values(c)){for(const[k,n]of Object.entries(v.nodes||{})){if(k==="cloud")cld+=n;else loc+=n;}}return{loc,cld};}
 function totalReq(c){let n=0;for(const v of Object.values(c))n+=v.requests||0;return n;}
 function fmt(n){return (n||0).toLocaleString();}
+function num(v,unit){return (v==null||v==="")?"–":(v+(unit||""));}
+function topModel(s){const m=s.models||{};let best="",bn=-1;for(const[k,v]of Object.entries(m)){if(v>bn){bn=v;best=k;}}return best;}
 
 async function poll(){
   let rec;
@@ -100,7 +167,6 @@ async function poll(){
   const stale = age>60;
   const fresh = rec.updated_at && rec.updated_at!==lastTs;
 
-  const ok = health.router==='ok' && !stale;
   $('statusDot').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
   $('kRouter').textContent = health.router==='ok'?(stale?'STALE':'OK'):'DOWN';
   $('kPort').textContent = 'port '+(health.port||'–')+' · '+Object.values(health.servers||{}).filter(v=>v==='up').length+' local up · '+Object.values(health.servers||{}).filter(v=>v==='cloud').length+' cloud pools';
@@ -118,7 +184,6 @@ async function poll(){
   $('kSpend').style.color = spend===0?'var(--ok)':spend<budget*0.5?'var(--warn)':'var(--bad)';
   $('kBudget').textContent='budget $'+budget.toFixed(0)+(cloud.paused?' · PAUSED':'')+' · inflight ~$'+(cloud.inflight_est_usd||0).toFixed(2);
 
-  // throughput: only recompute when a NEW push arrives (updated_at changed)
   if(fresh){
     if(prev && prev.ts){ const dt=(new Date(rec.updated_at)-new Date(prev.ts))/1000;
       if(dt>0){ const rpm=Math.max(0,(tot-prev.tot)/dt*60); $('throughput').textContent=rpm.toFixed(0)+' req/min';
@@ -127,32 +192,220 @@ async function poll(){
   }
 
   const {loc,cld}=sumNodes(callers), tt=loc+cld||1;
-  $('locPct').textContent=(100*loc/tt).toFixed(0)+'%'; $('cldPct').textContent=(100*cld/tt).toFixed(0)+'%';
-  $('locBar').style.width=(100*loc/tt)+'%'; $('cldBar').style.width=(100*cld/tt)+'%';
+  const lp=(100*loc/tt), cp=(100*cld/tt);
+  $('locPct').textContent=lp.toFixed(0)+'%'; $('cldPct').textContent=cp.toFixed(0)+'%';
+  $('locBar').style.width=lp+'%'; $('cldBar').style.width=cp+'%';
   $('locN').textContent=fmt(loc); $('cldN').textContent=fmt(cld);
 
   $('nodes').innerHTML=Object.entries(servers).map(([url,s])=>{
     const q=s.queued||0,a=s.active||0,col=q>0?'var(--warn)':a>0?'var(--acc)':'var(--dim)';
     const name=url.replace('http://','').replace(/\/$/,'');
-    return `<div class="kv"><span><b>${name}</b> <span class="muted">${(s.active_models||[]).join(', ')||s.last_model||'idle'}</span></span>
+    return `<div class="kv"><span><b>${esc(name)}</b> <span class="muted">${esc((s.active_models||[]).join(', ')||s.last_model||'idle')}</span></span>
       <span class="flex gap6"><span class="pill" style="color:${col};background:#141c2a">${a} active · ${q} queued</span>
       <span class="muted" style="min-width:90px;text-align:right">${fmt(s.served)} served</span></span></div>`;
   }).join('') || '<div class="muted">no node data</div>';
 
-  const hs=health.servers||{};
-  $('pools').innerHTML=CHAIN.filter(p=>hs[p]).map((p,i)=>`<span class="pool"><span class="muted">${i+1}.</span> ${p}</span>`).join('');
+  renderGpu(m.gpu);
+  renderCloud(stats, health);
+  renderHourly(stats);
 
   const rows=Object.entries(callers).filter(([k])=>k!=='-').sort((a,b)=>(b[1].requests||0)-(a[1].requests||0));
   $('callers').innerHTML=rows.map(([name,c])=>{
     let l=0,cl=0; for(const[k,v]of Object.entries(c.nodes||{})){if(k==='cloud')cl+=v;else l+=v;}
     const t=l+cl||1, st=c.status||{}, s2=st['2xx']||0,s4=st['4xx']||0,s5=st['5xx']||0,sT=s2+s4+s5||1, okr=100*s2/sT;
-    const tasks=Object.entries(c.tasks||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${t} ${fmt(n)}</span>`).join('');
-    return `<tr><td><b>${name}</b></td><td class="num">${fmt(c.requests)}</td>
-      <td><div class="bar" title="${l} local / ${cl} cloud"><i style="width:${100*l/t}%;background:var(--local)"></i><i style="width:${100*cl/t}%;background:var(--cloud)"></i></div></td>
+    const tasks=Object.entries(c.tasks||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${esc(t)} ${fmt(n)}</span>`).join('');
+    return `<tr><td><b>${esc(name)}</b></td><td class="num">${fmt(c.requests)}</td>
+      <td><div class="bar" title="${l} local / ${cl} cloud" style="width:120px"><i style="width:${100*l/t}%;background:var(--local)"></i><i style="width:${100*cl/t}%;background:var(--cloud)"></i></div>
+          <span class="muted mono" style="margin-left:6px">${(100*l/t).toFixed(0)}%L</span></td>
       <td><span style="color:${okr>=95?'var(--ok)':okr>=85?'var(--warn)':'var(--bad)'}">${okr.toFixed(0)}%</span>
           <span class="muted">${s4?(' · '+s4+' 4xx'):''}${s5?(' · '+s5+' 5xx'):''}</span></td>
       <td>${tasks}</td></tr>`;
   }).join('') || '<tr><td class="muted" colspan="5">no traffic yet</td></tr>';
+}
+
+// ---------- 1) GPU detail ----------
+function renderGpu(gpus){
+  if(!Array.isArray(gpus) || !gpus.length){
+    $('gpu').innerHTML='<div class="muted">no GPU telemetry (pusher may be down or nvidia-smi missing)</div>';
+    return;
+  }
+  $('gpu').innerHTML=gpus.map(g=>{
+    const util=(g.util==null)?null:Math.max(0,Math.min(100,g.util));
+    const utilCol=util==null?'var(--dim)':util>=90?'var(--bad)':util>=60?'var(--warn)':'var(--acc)';
+    const used=g.mem_used, total=g.mem_total;
+    const usedG=(used==null)?null:(used/1024), totalG=(total==null)?null:(total/1024);
+    const memPct=(used!=null&&total)?Math.max(0,Math.min(100,100*used/total)):null;
+    const memCol=memPct==null?'var(--dim)':memPct>=90?'var(--bad)':memPct>=70?'var(--warn)':'var(--cloud)';
+    const t=g.temp;
+    const tempCol=t==null?'var(--dim)':t>80?'var(--bad)':t>=60?'var(--warn)':'var(--ok)';
+    const power=(g.power==null)?'–':g.power+' W';
+    const powerLim=(g.power_limit==null)?'':(' / '+g.power_limit+' W');
+    return `<div class="gpu">
+      <div class="gpu-name">${esc(g.name||'GPU')}</div>
+      <div class="glabel"><span>Utilization</span><span class="mono" style="color:${utilCol}">${util==null?'–':util+'%'}</span></div>
+      <div class="gbar"><i style="width:${util==null?0:util}%;background:${utilCol}"></i></div>
+      <div class="glabel"><span>VRAM</span><span class="mono" style="color:${memCol}">${
+          usedG==null||totalG==null?'– / – GB':usedG.toFixed(1)+' / '+totalG.toFixed(1)+' GB'
+        }${memPct==null?'':' · '+memPct.toFixed(0)+'%'}</span></div>
+      <div class="gbar"><i style="width:${memPct==null?0:memPct}%;background:${memCol}"></i></div>
+      <div class="gstats">
+        <div class="gstat"><b style="color:${tempCol}">${t==null?'–':t+'°'}</b><span>Temp</span></div>
+        <div class="gstat"><b>${power}${powerLim}</b><span>Power</span></div>
+        <div class="gstat"><b>${num(g.clock_gfx,' MHz')}</b><span>Core clk</span></div>
+        <div class="gstat"><b>${num(g.clock_mem,' MHz')}</b><span>Mem clk</span></div>
+        <div class="gstat"><b>${num(g.fan,'%')}</b><span>Fan</span></div>
+        <div class="gstat"><b>${num(g.util_mem,'%')}</b><span>Mem util</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- 2) Cloud pools table + drill-down ----------
+function renderCloud(stats, health){
+  const pools=stats.pools||{};
+  const chain=(stats.cloud_chain&&stats.cloud_chain.length)? stats.cloud_chain.map(h=>h.pool) : CHAIN;
+  const chainModel={}; (stats.cloud_chain||[]).forEach(h=>chainModel[h.pool]=h.model);
+  const cooldown=stats.cloud_cooldown||{};
+  const hs=health.servers||{};
+
+  const order=chain.slice();
+  Object.keys(pools).forEach(p=>{ if(!order.includes(p)) order.push(p); });
+
+  const totalServed=Object.values(pools).reduce((a,s)=>a+(s.served||0),0);
+
+  // compact share — which pool is actually serving
+  const shareRows=order.map(p=>({p,s:pools[p]||{}})).filter(x=>(x.s.served||0)>0)
+                       .sort((a,b)=>(b.s.served||0)-(a.s.served||0));
+  $('cloudShareHead').innerHTML = totalServed
+     ? `${fmt(totalServed)} cloud calls served · ${shareRows.length} pool${shareRows.length===1?'':'s'} active this session`
+     : 'local-first is handling everything — no overflow to cloud yet this session';
+  $('cloudShare').innerHTML = shareRows.map(({p,s})=>{
+     const pct=100*(s.served||0)/(totalServed||1);
+     return `<div class="kv"><span><span class="legsw" style="background:${poolColor(p)}"></span> <b>${esc(p)}</b> <span class="muted">${esc(chainModel[p]||topModel(s))}</span></span>
+       <span class="flex gap6"><span class="bar" style="width:130px"><i style="width:${pct}%;background:${poolColor(p)}"></i></span>
+       <span class="muted mono" style="min-width:78px;text-align:right">${fmt(s.served)} · ${pct.toFixed(0)}%</span></span></div>`;
+  }).join('') || '<div class="muted">When the local GPUs are free, no requests reach the cloud. Overflow (congestion / local down) shows up here per pool.</div>';
+
+  // full per-pool table (each real pool row is clickable; detail row injected when open)
+  $('cloudTable').innerHTML = order.map((p)=>{
+     const s=pools[p]||{}, att=s.attempts||0, won=s.served||0;
+     const rank=chain.includes(p)?(chain.indexOf(p)+1):'–';
+     const okr=att?100*((s['2xx']||0)/att):null;
+     const cd=cooldown[p], configured=hs[p]==='cloud';
+     const share=totalServed?100*won/totalServed:0;
+     const isOpen=openPools.has(p);
+     let status;
+     if(cd) status=`<span style="color:var(--warn)">⏳ cooling ${cd}s</span>`;
+     else if(won>0) status=`<span style="color:var(--ok)">● active</span>`;
+     else if(att>0) status=`<span style="color:var(--bad)">failing</span>`;
+     else if(configured) status=`<span class="muted">ready</span>`;
+     else status=`<span class="muted">–</span>`;
+     const tasks=Object.entries(s.tasks||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${esc(t)} ${fmt(n)}</span>`).join('');
+     const model=chainModel[p]||topModel(s);
+     const okrCol=okr==null?'var(--dim)':okr>=90?'var(--ok)':okr>=50?'var(--warn)':'var(--bad)';
+     const mainRow=`<tr data-pool="${esc(p)}">
+       <td class="num muted">${rank}</td>
+       <td><span class="caret${isOpen?' open':''}">▶</span> <span class="legsw" style="background:${poolColor(p)}"></span> <b>${esc(p)}</b></td>
+       <td class="muted" style="max-width:230px;overflow:hidden;text-overflow:ellipsis"><span title="${esc(model)}">${esc(model)||'–'}</span></td>
+       <td class="num">${fmt(att)}</td>
+       <td class="num">${fmt(won)}</td>
+       <td class="num"><span class="bar" style="width:54px"><i style="width:${share}%;background:${poolColor(p)}"></i></span> <span class="muted mono">${share.toFixed(0)}%</span></td>
+       <td class="num" style="color:${okrCol}">${okr==null?'–':okr.toFixed(0)+'%'}</td>
+       <td class="num">${s['4xx']?('<span style="color:var(--warn)">'+fmt(s['4xx'])+'</span>'):'0'}</td>
+       <td class="num">${s['5xx']?('<span style="color:var(--bad)">'+fmt(s['5xx'])+'</span>'):'0'}</td>
+       <td>${tasks||'<span class="muted">–</span>'}</td>
+       <td>${status}</td></tr>`;
+     const detailRow=isOpen?poolDetailRow(p,s,cd):'';
+     return mainRow+detailRow;
+  }).join('') || '<tr><td class="muted" colspan="11">no cloud pools configured</td></tr>';
+}
+
+function poolDetailRow(p,s,cd){
+  const list=(obj)=>Object.entries(obj||{}).sort((a,b)=>b[1]-a[1]);
+  const callersL=list(s.callers), tasksL=list(s.tasks), modelsL=list(s.models);
+  const mk=(rows,emptyTxt)=> rows.length
+     ? rows.map(([k,n])=>`<div class="dd-row"><span>${esc(k)}</span><span class="mono">${fmt(n)}</span></div>`).join('')
+     : `<div class="muted" style="font-size:12px">${emptyTxt}</div>`;
+  const att=s.attempts||0, won=s.served||0;
+  const s2=s['2xx']||0,s4=s['4xx']||0,s5=s['5xx']||0,so=s.other||0;
+  const meta=`<div class="dd-row"><span>Attempts</span><span class="mono">${fmt(att)}</span></div>
+    <div class="dd-row"><span>Wins (served)</span><span class="mono">${fmt(won)}</span></div>
+    <div class="dd-row"><span>2xx</span><span class="mono" style="color:var(--ok)">${fmt(s2)}</span></div>
+    <div class="dd-row"><span>4xx / 429</span><span class="mono" style="color:var(--warn)">${fmt(s4)}</span></div>
+    <div class="dd-row"><span>5xx</span><span class="mono" style="color:var(--bad)">${fmt(s5)}</span></div>
+    ${so?`<div class="dd-row"><span>other</span><span class="mono">${fmt(so)}</span></div>`:''}
+    ${cd?`<div class="dd-row"><span>Cooldown</span><span class="mono" style="color:var(--warn)">${cd}s</span></div>`:''}`;
+  return `<tr class="detail"><td colspan="11"><div class="dd-grid">
+      <div><div class="dd-h">Callers — where the calls come from</div>${mk(callersL,'no attributed callers yet')}</div>
+      <div><div class="dd-h">Tasks</div>${mk(tasksL,'no task data')}</div>
+      <div><div class="dd-h">Models</div>${mk(modelsL,'no model data')}</div>
+      <div><div class="dd-h">Attempts · wins · status</div>${meta}</div>
+    </div></td></tr>`;
+}
+
+// event delegation on the tbody (no inline onclick); toggles open-set + re-renders that view
+$('cloudTable').addEventListener('click',e=>{
+  const tr=e.target.closest('tr[data-pool]');
+  if(!tr) return;
+  const p=tr.getAttribute('data-pool');
+  if(openPools.has(p)) openPools.delete(p); else openPools.add(p);
+  poll(); // immediate re-render so it feels responsive (also refreshes numbers)
+});
+
+// ---------- 3) Cloud calls per hour ----------
+function renderHourly(stats){
+  const hours=Array.isArray(stats.pool_hourly)?stats.pool_hourly:[];
+  const legendEl=$('hourLegend'), chartEl=$('hourChart'), noteEl=$('hourNote');
+  if(!hours.length){
+    legendEl.innerHTML='';
+    chartEl.className='';   // clear .hchart so the empty box doesn't keep its 150px height after a restart
+    chartEl.innerHTML='';
+    noteEl.innerHTML='<span class="muted">collecting — fills as cloud calls happen (resets on router restart)</span>';
+    return;
+  }
+  // collect pools present across all buckets, ordered by total wins desc
+  const totalsByPool={};
+  hours.forEach(h=>{ for(const[p,w]of Object.entries(h.pools||{})) totalsByPool[p]=(totalsByPool[p]||0)+(w||0); });
+  const poolsOrdered=Object.keys(totalsByPool).sort((a,b)=>totalsByPool[b]-totalsByPool[a]);
+  const maxTot=Math.max(1,...hours.map(h=>Object.values(h.pools||{}).reduce((a,w)=>a+(w||0),0)));
+
+  // legend (shared colours)
+  legendEl.innerHTML=poolsOrdered.map(p=>
+    `<span class="legi"><span class="legsw" style="background:${poolColor(p)}"></span>${esc(p)}</span>`
+  ).join('') || '<span class="muted">no wins recorded in these buckets yet</span>';
+
+  chartEl.className='hchart';
+  chartEl.innerHTML=hours.map(h=>{
+    const winTot=Object.values(h.pools||{}).reduce((a,w)=>a+(w||0),0);
+    const barPct=maxTot>0?(100*winTot/maxTot):0; // guard divide-by-zero
+    // hour label: "YYYY-MM-DDTHH" is UTC — convert to local HH for the axis
+    const hh=localHH(h.hour);
+    let segs='';
+    if(winTot>0){
+      segs=poolsOrdered.map(p=>{
+        const w=(h.pools||{})[p]||0;
+        if(!w) return '';
+        const segPct=100*w/winTot; // share of this bar
+        return `<i style="height:${segPct}%;background:${poolColor(p)}" title="${esc(p)}: ${fmt(w)} wins @ ${esc(hh)}"></i>`;
+      }).join('');
+    }
+    const stack = winTot>0
+      ? `<div class="hstack" style="height:${barPct}%">${segs}</div>`
+      : `<div class="hstack empty" title="no wins this hour"></div>`;
+    return `<div class="hcol" title="${esc(hh)} · ${fmt(winTot)} wins">
+        <div class="htot">${winTot>0?fmt(winTot):''}</div>${stack}
+        <div class="hx">${esc(hh)}</div></div>`;
+  }).join('');
+  noteEl.innerHTML='<span class="muted">bars = wins per hour, segmented by pool · x-axis = <b>local</b> hour (HH) · resets on router restart</span>';
+}
+
+// "YYYY-MM-DDTHH" (UTC) -> local two-digit hour string
+function localHH(key){
+  if(typeof key!=='string') return '–';
+  const mo=/^(\d{4})-(\d{2})-(\d{2})T(\d{2})/.exec(key);
+  if(!mo) return esc(key.slice(-2));
+  const d=new Date(Date.UTC(+mo[1],+mo[2]-1,+mo[3],+mo[4],0,0));
+  return String(d.getHours()).padStart(2,'0');
 }
 
 function drawSpark(){
