@@ -107,7 +107,7 @@ function routeInfo(node){
   const n=String(node==null?'':node).toLowerCase();
   if(n==="cloud")                       return {cls:"b-cloud", label:"cloud"};
   if(n.includes("levitin")||n.includes("old")) return {cls:"b-old", label:"old-laptop"};
-  if(n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost")) return {cls:"b-local", label:"local"};
+  if(n==="new"||n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost")) return {cls:"b-local", label:"local"};
   if(node==null||node==="")             return {cls:"b-other", label:"?"};
   return {cls:"b-local", label:String(node)}; // any other gpu url => a local node
 }

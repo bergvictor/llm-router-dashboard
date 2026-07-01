@@ -98,7 +98,7 @@
   <div class="card col3"><h2>Success rate</h2><div class="big" id="kOk">–</div><div class="sub" id="kErr">– errors</div></div>
   <div class="card col3"><h2>Cloud spend today</h2><div class="big" id="kSpend">–</div><div class="sub" id="kBudget">budget –</div></div>
 
-  <div class="card col8"><h2>Throughput (req/min, last ~5 min)</h2><svg id="spark" viewBox="0 0 600 60" preserveAspectRatio="none"></svg></div>
+  <div class="card col8"><h2>Throughput (req/min, last ~10 min)</h2><svg id="spark" viewBox="0 0 600 60" preserveAspectRatio="none"></svg></div>
   <div class="card col4"><h2>Local vs Cloud (this session)</h2>
     <div class="flex" style="margin-bottom:8px"><span class="pill" style="background:#12291f;color:var(--local)">Local <b id="locPct">–</b></span>
       <span class="pill" style="background:#20182e;color:var(--cloud)">Cloud <b id="cldPct">–</b></span></div>
@@ -191,7 +191,8 @@ async function poll(){
   $('kErr').textContent=fmt(e4)+' 4xx · '+fmt(e5)+' 5xx';
   const spend=cloud.spent_today_usd||0, budget=cloud.daily_budget_usd||0;
   $('kSpend').textContent='$'+spend.toFixed(2);
-  $('kSpend').style.color = spend===0?'var(--ok)':spend<budget*0.5?'var(--warn)':'var(--bad)';
+  const _sf = budget>0 ? spend/budget : 0;
+  $('kSpend').style.color = spend===0?'var(--ok)':(cloud.paused||_sf>=1)?'var(--bad)':_sf>=0.8?'var(--warn)':'var(--fg)';
   $('kBudget').textContent='budget $'+budget.toFixed(0)+(cloud.paused?' · PAUSED':'')+' · inflight ~$'+(cloud.inflight_est_usd||0).toFixed(2);
 
   if(fresh){
