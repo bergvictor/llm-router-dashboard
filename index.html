@@ -67,6 +67,7 @@
   .dk-state{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;text-transform:capitalize}
   #docker td.img,#docker td.ports{white-space:normal;word-break:break-all;color:var(--dim);font-size:12px}
   #docker td.ports{max-width:260px}
+  #docker tr.dk-grp td{background:var(--card2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:700}
   /* ---- per-hour chart ---- */
   .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
   .legi{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim)}
@@ -281,6 +282,7 @@ function renderDocker(dk){
   }
   const cs=Array.isArray(dk.containers)?dk.containers:[];
   if(!cs.length){ el.innerHTML='<div class="muted">no containers</div>'; return; }
+  const isRun=c=>String(c.state==null?'':c.state).toLowerCase()==='running';
   const stateStyle=st=>{
     const s=String(st==null?'':st).toLowerCase();
     if(s==='running') return 'background:#12291f;color:var(--ok)';
@@ -288,18 +290,30 @@ function renderDocker(dk){
     if(s==='paused'||s==='created') return 'background:#2a2413;color:var(--warn)';
     return 'background:#141c2a;color:var(--dim)';
   };
-  const rows=cs.map(c=>{
-    const st=c.state==null?'':c.state;
-    return `<tr>
+  // group by compose project (fallback: standalone); stacks with more containers first
+  const groups={};
+  for(const c of cs){ const g=(c.project&&String(c.project))||'standalone'; (groups[g]=groups[g]||[]).push(c); }
+  const gnames=Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+  const running=cs.filter(isRun).length;
+  const summary=`<div class="sub" style="margin:0 0 10px">${cs.length} containers · `+
+    `<b style="color:var(--ok)">${running} running</b> · ${cs.length-running} stopped · `+
+    `${gnames.length} stack${gnames.length===1?'':'s'}</div>`;
+  const row=c=>{ const st=c.state==null?'':c.state; return `<tr>
       <td><b>${esc(c.name)||'–'}</b></td>
       <td class="img"><span title="${esc(c.image)}">${esc(c.image)||'–'}</span></td>
       <td><span class="dk-state" style="${stateStyle(st)}">${esc(st)||'?'}</span></td>
       <td class="muted">${esc(c.status)||'–'}</td>
-      <td class="ports">${esc(c.ports)||'<span class="muted">–</span>'}</td></tr>`;
-  }).join('');
-  el.innerHTML=`<table><thead><tr>
+      <td class="ports">${esc(c.ports)||'<span class="muted">–</span>'}</td></tr>`; };
+  let body='';
+  for(const g of gnames){
+    const list=groups[g].slice().sort((a,b)=>(isRun(b)?1:0)-(isRun(a)?1:0));
+    const run=list.filter(isRun).length;
+    body+=`<tr class="dk-grp"><td colspan="5">${esc(g)} <span class="muted">· ${run}/${list.length} running</span></td></tr>`;
+    body+=list.map(row).join('');
+  }
+  el.innerHTML=summary+`<table><thead><tr>
       <th>Name</th><th>Image</th><th>State</th><th>Status</th><th>Ports</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+    </tr></thead><tbody>${body}</tbody></table>`;
 }
 
 // ---------- 2) Cloud pools table + drill-down ----------
