@@ -11,18 +11,18 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
-         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:5;flex-wrap:wrap}
+         position:sticky;top:0;background:linear-gradient(180deg,#0d131e,#0b0f17);z-index:6;flex-wrap:wrap}
   h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
   .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
   .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
   a.nav{color:var(--acc);text-decoration:none;font-size:12.5px;font-weight:600}
   a.nav:hover{text-decoration:underline}
-  .wrap{padding:18px 20px;max-width:1400px;margin:0 auto}
+  .wrap{padding:18px 20px;max-width:1500px;margin:0 auto}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-x:auto}
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--card);z-index:1}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
@@ -33,22 +33,40 @@
   .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;display:flex;align-items:baseline;gap:8px}
   .stat b{font-size:20px;font-variant-numeric:tabular-nums;line-height:1}
   .stat span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
-  /* ---- filter buttons ---- */
-  .filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  /* ---- filter rows ---- */
+  .filters{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+  .flabel{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-right:2px;min-width:52px}
   .fbtn{background:var(--card2);border:1px solid var(--line);color:var(--dim);border-radius:999px;
-        padding:5px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .12s ease}
+        padding:5px 13px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .12s ease}
   .fbtn:hover{border-color:var(--acc);color:var(--fg)}
   .fbtn.active{background:#16283e;border-color:var(--acc);color:var(--fg)}
+  .shown{margin-left:auto;font-size:12px;color:var(--dim)}
   /* ---- feed table ---- */
-  #feed tr:hover td{background:#161f2e}
+  #feed tr.call{cursor:pointer}
+  #feed tr.call:hover td{background:#161f2e}
+  #feed tr.call.open td{background:#17223a}
+  .caret{display:inline-block;width:9px;color:var(--dim);transition:transform .15s ease;font-size:10px}
+  .caret.open{transform:rotate(90deg);color:var(--acc)}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .b-cloud{background:#20182e;color:var(--cloud)}
   .b-local{background:#12291f;color:var(--local)}
   .b-old{background:#0e2a29;color:var(--old)}
   .b-other{background:#1b2536;color:var(--dim)}
-  .mode{font-size:10.5px;color:var(--dim);margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+  .chip{display:inline-block;background:#1b2536;border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--cloud);font-weight:600}
+  .mode{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+  .sep{color:#33415a;margin:0 1px}
   .rel{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
   .empty{color:var(--dim);text-align:center;padding:36px 10px;font-size:13.5px}
+  /* ---- expanded detail ---- */
+  tr.detail > td{background:var(--card2);border-bottom:1px solid var(--line);padding:0;white-space:normal}
+  .dd{padding:14px 16px}
+  .dd-story{font-size:13px;margin:0 0 12px;color:var(--fg);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .dd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px}
+  .dd-f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .dd-k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+  .dd-v{font-size:13px;font-variant-numeric:tabular-nums;word-break:break-word;white-space:normal}
+  .dd-chain{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .dd-hop{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -69,19 +87,32 @@
     <div class="stat"><b id="s5xx" style="color:var(--bad)">–</b><span>5xx</span></div>
     <div class="stat"><b id="sLocal" style="color:var(--local)">–</b><span>local</span></div>
     <div class="stat"><b id="sCloud" style="color:var(--cloud)">–</b><span>cloud</span></div>
+    <div class="stat"><b id="sAvg">–</b><span>avg latency</span></div>
+    <div class="stat"><b id="sP95">–</b><span>p95 latency</span></div>
   </div>
 
   <div class="filters">
-    <button class="fbtn active" data-filter="all">All</button>
-    <button class="fbtn" data-filter="errors">Errors only</button>
-    <button class="fbtn" data-filter="cloud">Cloud only</button>
+    <span class="flabel">Show</span>
+    <button class="fbtn active" data-type="all">All</button>
+    <button class="fbtn" data-type="errors">Errors</button>
+    <button class="fbtn" data-type="cloud">Cloud</button>
+    <button class="fbtn" data-type="local">Local</button>
+    <button class="fbtn" data-type="slow">Slow (&gt;5s)</button>
+  </div>
+  <div class="filters">
+    <span class="flabel">Window</span>
+    <button class="fbtn" data-win="300">5m</button>
+    <button class="fbtn" data-win="900">15m</button>
+    <button class="fbtn" data-win="3600">1h</button>
+    <button class="fbtn active" data-win="0">All</button>
+    <span class="shown" id="shown">–</span>
   </div>
 
   <div class="card">
-    <h2>Live call feed <span class="muted" style="text-transform:none;letter-spacing:0">· newest first</span></h2>
+    <h2>Live call feed <span class="muted" style="text-transform:none;letter-spacing:0">· newest first · click a row to expand</span></h2>
     <table>
       <thead><tr>
-        <th>Time</th><th>Caller</th><th>Task</th><th>Model</th><th>Route</th>
+        <th style="width:14px"></th><th>Time</th><th>Caller</th><th>Task</th><th>Model</th><th>Route</th>
         <th class="num">Status</th><th class="num">Latency</th>
       </tr></thead>
       <tbody id="feed"></tbody>
@@ -96,34 +127,45 @@ const $=id=>document.getElementById(id);
 const SUPA_URL="https://mnzdcxcolxiqprwkujxy.supabase.co";
 const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uemRjeGNvbHhpcXByd2t1anh5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2Mzg3MDAsImV4cCI6MjA4ODIxNDcwMH0.JuLvuOd08iSh5yDrrVbarKEr6LCtkRT5K6gA1_nhEcM";
 
-let FILTER="all";       // all | errors | cloud
-let lastRecent=[];      // last recent[] we rendered (for re-filter without refetch)
+let TYPE="all";         // all | errors | cloud | local | slow
+let WIN=0;              // seconds; 0 = all
+let lastRecent=[];      // last recent[] we rendered
 let lastAge=1e9;
+const openRows=new Set(); // expanded row keys (by call timestamp), survives refresh
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const rowKey=c=>String(c&&c.t);
 
 // ---- classify the route of a call from its node field ----
 function routeInfo(node){
   const n=String(node==null?'':node).toLowerCase();
-  if(n==="cloud")                       return {cls:"b-cloud", label:"cloud"};
-  if(n.includes("levitin")||n.includes("old")) return {cls:"b-old", label:"old-laptop"};
-  if(n==="new"||n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost")) return {cls:"b-local", label:"local"};
-  if(node==null||node==="")             return {cls:"b-other", label:"?"};
-  return {cls:"b-local", label:String(node)}; // any other gpu url => a local node
+  if(n==="cloud")                            return {cls:"b-cloud", label:"cloud", long:"Cloud free pool"};
+  if(n.includes("levitin")||n.includes("old")) return {cls:"b-old", label:"old-laptop", long:"Old laptop (RTX 3070 fallback)"};
+  if(n==="new"||n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost"))
+    return {cls:"b-local", label:"local", long:"Local RTX 5090 (qwen pin)"};
+  if(node==null||node==="")                  return {cls:"b-other", label:"?", long:"unknown"};
+  return {cls:"b-local", label:String(node), long:"Local node "+node};
 }
 const isCloud = c => String(c&&c.node).toLowerCase()==="cloud";
 
-// ---- time helpers ----
+// ---- time / format helpers ----
+function nowS(){return Date.now()/1000;}
+function ageS(t){return (t==null||isNaN(+t))?1e9:Math.max(0,nowS()-(+t));}
 function fmtClock(t){
   if(t==null||isNaN(+t)) return "–";
-  const d=new Date((+t)*1000);
-  if(isNaN(d.getTime())) return "–";
+  const d=new Date((+t)*1000); if(isNaN(d.getTime())) return "–";
   const p=n=>String(n).padStart(2,'0');
   return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
 }
+function fmtFull(t){
+  if(t==null||isNaN(+t)) return "–";
+  const d=new Date((+t)*1000); if(isNaN(d.getTime())) return "–";
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
 function relAgo(t){
   if(t==null||isNaN(+t)) return "";
-  let s=Math.max(0,Math.round(Date.now()/1000-(+t)));
+  let s=Math.max(0,Math.round(ageS(t)));
   if(s<60)   return s+"s ago";
   if(s<3600) return Math.round(s/60)+"m ago";
   if(s<86400)return Math.round(s/3600)+"h ago";
@@ -131,21 +173,27 @@ function relAgo(t){
 }
 function fmtLatency(ms){
   if(ms==null||isNaN(+ms)) return "–";
-  ms=+ms;
-  return ms<1000 ? ms+"ms" : (ms/1000).toFixed(ms<10000?1:0)+"s";
+  ms=+ms; return ms<1000 ? ms+"ms" : (ms/1000).toFixed(ms<10000?1:0)+"s";
 }
 function latencyCol(ms){
   if(ms==null||isNaN(+ms)) return "var(--dim)";
-  ms=+ms;
-  return ms>15000 ? "var(--bad)" : ms>5000 ? "var(--warn)" : "var(--fg)";
+  ms=+ms; return ms>15000 ? "var(--bad)" : ms>5000 ? "var(--warn)" : "var(--fg)";
 }
 function statusCol(st){
+  const s=+st; if(isNaN(s)) return "var(--dim)";
+  if(s>=500) return "var(--bad)"; if(s>=400) return "var(--warn)";
+  if(s>=200&&s<300) return "var(--ok)"; return "var(--dim)";
+}
+// plain-English status meaning (for the expanded detail)
+function statusStory(st){
   const s=+st;
-  if(isNaN(s)) return "var(--dim)";
-  if(s>=500)   return "var(--bad)";
-  if(s>=400)   return "var(--warn)";
-  if(s>=200&&s<300) return "var(--ok)";
-  return "var(--dim)";
+  if(isNaN(s)) return ["unknown","var(--dim)"];
+  if(s===413) return ["413 · payload too large for this provider → failed over","var(--warn)"];
+  if(s===429) return ["429 · rate-limited (pool quota) → router advanced to the next pool","var(--warn)"];
+  if(s>=500) return [s+" · provider error → failed over to the next node","var(--bad)"];
+  if(s>=400) return [s+" · request rejected → failed over","var(--warn)"];
+  if(s>=200&&s<300) return [s+" · served OK","var(--ok)"];
+  return [String(st),"var(--dim)"];
 }
 
 async function poll(){
@@ -158,9 +206,7 @@ async function poll(){
     $('statusDot').style.color='var(--bad)'; $('updated').textContent='no data feed'; return;
   }
   const m=rec.metrics||{}, stats=m.stats||{};
-  const recent=Array.isArray(stats.recent)?stats.recent:[];
-  lastRecent=recent;
-
+  lastRecent=Array.isArray(stats.recent)?stats.recent:[];
   const age = rec.updated_at? (Date.now()-new Date(rec.updated_at).getTime())/1000 : 1e9;
   lastAge=age;
   const stale = age>60;
@@ -168,82 +214,135 @@ async function poll(){
   $('statusDot').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
   $('updated').textContent = (rec.updated_at? (stale?'⚠ stale ':'updated ')+Math.round(age)+'s ago' : 'no updated_at — stale');
   $('ageNote').textContent = rec.updated_at ? ('last push '+Math.round(age)+'s ago'+(stale?' — pusher daemon may be down':'')) : 'no push timestamp — feed may be stale';
-
-  renderSummary(recent);
+  renderSummary();
   renderFeed();
 }
 
-function renderSummary(recent){
-  let o2=0,e4=0,e5=0,loc=0,cld=0;
-  for(const c of recent){
+function renderSummary(){
+  let o2=0,e4=0,e5=0,loc=0,cld=0; const lat=[];
+  for(const c of lastRecent){
     const s=+((c&&c.status));
     if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
     if(isCloud(c)) cld++; else loc++;
+    const ms=+(c&&c.ms); if(!isNaN(ms)) lat.push(ms);
   }
-  $('sTotal').textContent=recent.length;
-  $('s2xx').textContent=o2;
-  $('s4xx').textContent=e4;
-  $('s5xx').textContent=e5;
-  $('sLocal').textContent=loc;
-  $('sCloud').textContent=cld;
+  $('sTotal').textContent=lastRecent.length;
+  $('s2xx').textContent=o2; $('s4xx').textContent=e4; $('s5xx').textContent=e5;
+  $('sLocal').textContent=loc; $('sCloud').textContent=cld;
+  lat.sort((a,b)=>a-b);
+  const avg=lat.length?lat.reduce((a,b)=>a+b,0)/lat.length:null;
+  const p95=lat.length?lat[Math.min(lat.length-1,Math.floor(lat.length*0.95))]:null;
+  $('sAvg').textContent=fmtLatency(avg); $('sP95').textContent=fmtLatency(p95);
+  $('sAvg').style.color=latencyCol(avg); $('sP95').style.color=latencyCol(p95);
 }
 
-function passFilter(c){
-  if(FILTER==="errors") return (+((c&&c.status)))>=400;
-  if(FILTER==="cloud")  return isCloud(c);
+function passType(c){
+  if(TYPE==="errors") return (+((c&&c.status)))>=400;
+  if(TYPE==="cloud")  return isCloud(c);
+  if(TYPE==="local")  return !isCloud(c);
+  if(TYPE==="slow")   return (+(c&&c.ms))>5000;
   return true;
+}
+function passWin(c){ return WIN<=0 ? true : ageS(c&&c.t)<=WIN; }
+function passFilter(c){ return passType(c) && passWin(c); }
+
+function servedModel(c){
+  return (c.model!=null&&c.model!=='')?c.model:((c.requested!=null&&c.requested!=='')?c.requested:'–');
+}
+
+function detailRow(c){
+  const ri=routeInfo(c.node);
+  const [story,scol]=statusStory(c.status);
+  const served=servedModel(c);
+  const requested=(c.requested==null||c.requested==='')?'–':c.requested;
+  const routeTxt=ri.long + (isCloud(c)&&c.pool?(' · '+c.pool):'');
+  const f=(k,v)=>`<div class="dd-f"><span class="dd-k">${k}</span><span class="dd-v">${v}</span></div>`;
+  return `<tr class="detail"><td colspan="8"><div class="dd">
+      <div class="dd-story"><span class="badge ${ri.cls}">${esc(ri.label)}</span>
+        <span style="color:${scol};font-weight:600">${esc(story)}</span></div>
+      <div class="dd-grid">
+        ${f('Caller', esc(c.caller||'–'))}
+        ${f('Task', esc(c.task||'–'))}
+        ${f('Requested model', esc(requested))}
+        ${f('Served model', esc(served))}
+        ${f('Route', esc(routeTxt))}
+        ${f('Pool', esc(isCloud(c)?(c.pool||'–'):'—'))}
+        ${f('Mode', esc(c.mode||'–'))}
+        ${f('Status', esc(String(c.status==null?'–':c.status)))}
+        ${f('Latency', esc(fmtLatency(c.ms)))}
+        ${f('When', esc(fmtFull(c.t))+' · '+esc(relAgo(c.t)))}
+      </div></div></td></tr>`;
 }
 
 function renderFeed(){
   const feed=$('feed');
   if(!lastRecent.length){
-    feed.innerHTML='<tr><td colspan="7"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
+    feed.innerHTML='<tr><td colspan="8"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
+    $('shown').textContent='';
     return;
   }
   const rows=lastRecent.filter(passFilter);
+  $('shown').textContent='showing '+rows.length+' of '+lastRecent.length;
   if(!rows.length){
-    const what = FILTER==="errors" ? "no errors in the current buffer — all recent calls succeeded"
-               : FILTER==="cloud"  ? "no cloud calls in the current buffer — local nodes are handling everything"
-               : "no calls to show";
-    feed.innerHTML='<tr><td colspan="7"><div class="empty">'+esc(what)+'</div></td></tr>';
+    const w = WIN>0 ? (' in the last '+(WIN>=3600?(WIN/3600+'h'):(WIN/60+'m'))) : '';
+    const what = TYPE==="errors" ? "no errors"+w+" — recent calls succeeded"
+               : TYPE==="cloud"  ? "no cloud calls"+w+" — local nodes handled everything"
+               : TYPE==="local"  ? "no local calls"+w
+               : TYPE==="slow"   ? "no calls slower than 5s"+w
+               : "no calls"+w;
+    feed.innerHTML='<tr><td colspan="8"><div class="empty">'+esc(what)+'</div></td></tr>';
     return;
   }
-  feed.innerHTML=rows.map(c=>{
-    c=c||{};
+  let html='';
+  for(const c of rows){
     const ri=routeInfo(c.node);
-    const mode=c.mode ? `<span class="mode">${esc(c.mode)}</span>` : '';
-    const st=c.status;
-    const stTxt=(st==null||st==="")?'–':esc(st);
+    const st=c.status, stTxt=(st==null||st==="")?'–':esc(st);
     const caller=(c.caller==null||c.caller==='')?'–':esc(c.caller);
     const task=(c.task==null||c.task==='')?'–':esc(c.task);
-    const _mn=(c.model!=null&&c.model!=='')?c.model:((c.requested!=null&&c.requested!=='')?c.requested:'–');
-    const model=esc(_mn);
-    const modelTitle=esc('requested: '+(c.requested==null?'-':c.requested)+'  →  served: '+_mn);
-    const poolTag=(isCloud(c)&&c.pool)?`<span class="mode" style="color:var(--cloud)">${esc(c.pool)}</span>`:'';
-    return `<tr>
+    const served=servedModel(c);
+    const modelTitle=esc('requested: '+(c.requested==null?'-':c.requested)+'  →  served: '+served);
+    const poolChip=(isCloud(c)&&c.pool)?`<span class="sep">·</span><span class="chip">${esc(c.pool)}</span>`:'';
+    const mode=c.mode?`<span class="sep">·</span><span class="mode">${esc(c.mode)}</span>`:'';
+    const k=rowKey(c), isOpen=openRows.has(k);
+    html+=`<tr class="call${isOpen?' open':''}" data-k="${esc(k)}">
+      <td><span class="caret${isOpen?' open':''}">▶</span></td>
       <td><span class="mono">${esc(fmtClock(c.t))}</span> <span class="rel">${esc(relAgo(c.t))}</span></td>
       <td><b>${caller}</b></td>
       <td>${task}</td>
-      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis"><span title="${modelTitle}">${model}</span></td>
-      <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${poolTag}${mode}</td>
+      <td class="mono" style="max-width:250px;overflow:hidden;text-overflow:ellipsis"><span title="${modelTitle}">${esc(served)}</span></td>
+      <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${poolChip}${mode}</td>
       <td class="num" style="color:${statusCol(st)};font-weight:600">${stTxt}</td>
       <td class="num" style="color:${latencyCol(c.ms)}">${esc(fmtLatency(c.ms))}</td>
     </tr>`;
-  }).join('');
+    if(isOpen) html+=detailRow(c);
+  }
+  feed.innerHTML=html;
 }
 
-// filter buttons — client-side, no reload
-document.querySelectorAll('.fbtn').forEach(b=>{
-  b.addEventListener('click',()=>{
-    FILTER=b.getAttribute('data-filter');
-    document.querySelectorAll('.fbtn').forEach(x=>x.classList.toggle('active',x===b));
-    renderFeed(); // instant re-filter from the buffer we already have
-  });
+// expand/collapse on row click (event delegation; survives refresh via openRows set)
+$('feed').addEventListener('click',e=>{
+  const tr=e.target.closest('tr.call');
+  if(!tr) return;
+  const k=tr.getAttribute('data-k');
+  if(openRows.has(k)) openRows.delete(k); else openRows.add(k);
+  renderFeed();
 });
 
+// filter buttons — client-side, no reload
+document.querySelectorAll('.fbtn[data-type]').forEach(b=>b.addEventListener('click',()=>{
+  TYPE=b.getAttribute('data-type');
+  document.querySelectorAll('.fbtn[data-type]').forEach(x=>x.classList.toggle('active',x===b));
+  renderFeed();
+}));
+document.querySelectorAll('.fbtn[data-win]').forEach(b=>b.addEventListener('click',()=>{
+  WIN=+b.getAttribute('data-win');
+  document.querySelectorAll('.fbtn[data-win]').forEach(x=>x.classList.toggle('active',x===b));
+  renderFeed();
+}));
+
 poll(); setInterval(poll,4000);
-// tick relative times / stale note between polls so "Ns ago" stays live
-setInterval(()=>{ if(lastRecent.length) renderFeed(); },1000);
+// tick relative times / window filter between polls so "Ns ago" + time windows stay live
+setInterval(()=>{ if(lastRecent.length){ renderSummary(); renderFeed(); } },1000);
 </script>
 </body>
 </html>
