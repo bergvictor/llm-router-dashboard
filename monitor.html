@@ -22,7 +22,7 @@
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--card);z-index:1}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
@@ -105,6 +105,7 @@
     <button class="fbtn" data-win="900">15m</button>
     <button class="fbtn" data-win="3600">1h</button>
     <button class="fbtn active" data-win="0">All</button>
+    <button class="fbtn" id="expandAll" style="margin-left:14px">⊕ Expand all</button>
     <span class="shown" id="shown">–</span>
   </div>
 
@@ -219,14 +220,15 @@ async function poll(){
 }
 
 function renderSummary(){
+  const set=lastRecent.filter(passWin);   // strip reflects the selected time window (all types)
   let o2=0,e4=0,e5=0,loc=0,cld=0; const lat=[];
-  for(const c of lastRecent){
+  for(const c of set){
     const s=+((c&&c.status));
     if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
     if(isCloud(c)) cld++; else loc++;
     const ms=+(c&&c.ms); if(!isNaN(ms)) lat.push(ms);
   }
-  $('sTotal').textContent=lastRecent.length;
+  $('sTotal').textContent=set.length;
   $('s2xx').textContent=o2; $('s4xx').textContent=e4; $('s5xx').textContent=e5;
   $('sLocal').textContent=loc; $('sCloud').textContent=cld;
   lat.sort((a,b)=>a-b);
@@ -276,6 +278,7 @@ function detailRow(c){
 
 function renderFeed(){
   const feed=$('feed');
+  if(openRows.size){ const live=new Set(lastRecent.map(rowKey)); for(const k of [...openRows]) if(!live.has(k)) openRows.delete(k); }
   if(!lastRecent.length){
     feed.innerHTML='<tr><td colspan="8"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
     $('shown').textContent='';
@@ -283,6 +286,8 @@ function renderFeed(){
   }
   const rows=lastRecent.filter(passFilter);
   $('shown').textContent='showing '+rows.length+' of '+lastRecent.length;
+  const allOpen=rows.length && rows.every(c=>openRows.has(rowKey(c)));
+  $('expandAll').textContent = allOpen ? '⊖ Collapse all' : '⊕ Expand all';
   if(!rows.length){
     const w = WIN>0 ? (' in the last '+(WIN>=3600?(WIN/3600+'h'):(WIN/60+'m'))) : '';
     const what = TYPE==="errors" ? "no errors"+w+" — recent calls succeeded"
@@ -302,7 +307,7 @@ function renderFeed(){
     const served=servedModel(c);
     const modelTitle=esc('requested: '+(c.requested==null?'-':c.requested)+'  →  served: '+served);
     const poolChip=(isCloud(c)&&c.pool)?`<span class="sep">·</span><span class="chip">${esc(c.pool)}</span>`:'';
-    const mode=c.mode?`<span class="sep">·</span><span class="mode">${esc(c.mode)}</span>`:'';
+    const mode=(c.mode&&c.mode!=='failover')?`<span class="sep">·</span><span class="mode">${esc(c.mode)}</span>`:'';
     const k=rowKey(c), isOpen=openRows.has(k);
     html+=`<tr class="call${isOpen?' open':''}" data-k="${esc(k)}">
       <td><span class="caret${isOpen?' open':''}">▶</span></td>
@@ -339,10 +344,21 @@ document.querySelectorAll('.fbtn[data-win]').forEach(b=>b.addEventListener('clic
   document.querySelectorAll('.fbtn[data-win]').forEach(x=>x.classList.toggle('active',x===b));
   renderFeed();
 }));
+// expand/collapse ALL currently-shown rows at once
+$('expandAll').addEventListener('click',()=>{
+  const shown=lastRecent.filter(passFilter);
+  const allOpen=shown.length && shown.every(c=>openRows.has(rowKey(c)));
+  if(allOpen) openRows.clear(); else shown.forEach(c=>openRows.add(rowKey(c)));
+  renderFeed();
+});
 
 poll(); setInterval(poll,4000);
 // tick relative times / window filter between polls so "Ns ago" + time windows stay live
-setInterval(()=>{ if(lastRecent.length){ renderSummary(); renderFeed(); } },1000);
+setInterval(()=>{
+  if(!lastRecent.length) return;
+  if(window.getSelection && String(window.getSelection())) return; // don't clobber an active text selection (copying detail)
+  renderSummary(); renderFeed();
+},1000);
 </script>
 </body>
 </html>
