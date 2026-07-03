@@ -91,6 +91,10 @@
     <div class="stat"><b id="sP95">–</b><span>p95 latency</span></div>
     <div class="stat"><b id="sSpend" style="color:var(--cloud)">–</b><span>spend (window)</span></div>
   </div>
+  <div id="srcBreak" style="margin:2px 0 10px;font-size:12px;color:var(--dim)">
+    <span class="muted" style="text-transform:uppercase;letter-spacing:.06em">Sources</span>
+    <span id="srcBreakList" style="margin-left:8px">–</span>
+  </div>
 
   <div class="filters">
     <span class="flabel">Show</span>
@@ -143,12 +147,28 @@ function routeInfo(node){
   const n=String(node==null?'':node).toLowerCase();
   if(n==="cloud")                            return {cls:"b-cloud", label:"cloud", long:"Cloud free pool"};
   if(n.includes("levitin")||n.includes("old")) return {cls:"b-old", label:"old-laptop", long:"Old laptop (RTX 3070 fallback)"};
+  if(n.includes("batch"))                     return {cls:"b-local", label:"5090-batch", long:"Local RTX 5090 batch server (gpt-oss)"};
   if(n==="new"||n.includes("127.0.0.1")||n.includes("local")||n.includes("localhost"))
-    return {cls:"b-local", label:"local", long:"Local RTX 5090 (qwen pin)"};
+    return {cls:"b-local", label:"5090", long:"Local RTX 5090 (qwen pin)"};
   if(node==null||node==="")                  return {cls:"b-other", label:"?", long:"unknown"};
   return {cls:"b-local", label:String(node), long:"Local node "+node};
 }
 const isCloud = c => String(c&&c.node).toLowerCase()==="cloud";
+
+// Friendly provider/source names so the feed reads "Google / Mistral / OpenRouter"
+// instead of the raw pool key. Answers "what source is this model served from".
+const PROVIDER_NAMES = {
+  google:'Google', mistral:'Mistral', groq:'Groq', cerebras:'Cerebras', cloudflare:'Cloudflare',
+  github:'GitHub', nvidia:'NVIDIA', cohere:'Cohere', zai:'Z.ai', 'ollama-cloud':'Ollama Cloud',
+  huggingface:'HuggingFace', ovh:'OVH', vercel:'Vercel', longcat:'LongCat', openrouter:'OpenRouter',
+  sambanova:'SambaNova', modelscope:'ModelScope',
+};
+function providerName(p){ if(!p) return ''; const k=String(p).toLowerCase(); return PROVIDER_NAMES[k]||p; }
+// The single "where did this model come from" label: a cloud provider name, or the local node.
+function sourceLabel(c){
+  if(isCloud(c)) return providerName(c&&c.pool) || 'cloud';
+  return routeInfo(c&&c.node).label;   // 5090 / 5090-batch / old-laptop
+}
 
 // ---- time / format helpers ----
 function nowS(){return Date.now()/1000;}
@@ -237,17 +257,27 @@ async function poll(){
 function renderSummary(){
   const set=lastRecent.filter(passWin);   // strip reflects the selected time window (all types)
   let o2=0,e4=0,e5=0,loc=0,cld=0,spend=0; const lat=[];
+  const srcCount={}, srcCloud={};   // per-source tallies: where each model was served from
   for(const c of set){
     const s=+((c&&c.status));
     if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
     if(isCloud(c)) cld++; else loc++;
     spend += costVal(c);
+    const sl=sourceLabel(c); srcCount[sl]=(srcCount[sl]||0)+1; srcCloud[sl]=isCloud(c);
     const ms=+(c&&c.ms); if(!isNaN(ms)) lat.push(ms);
   }
   $('sTotal').textContent=set.length;
   $('s2xx').textContent=o2; $('s4xx').textContent=e4; $('s5xx').textContent=e5;
   $('sLocal').textContent=loc; $('sCloud').textContent=cld;
   $('sSpend').textContent=fmtSpend(spend);
+  // Source breakdown: which node/provider actually served the calls, most-used first.
+  const srcEntries=Object.entries(srcCount).sort((a,b)=>b[1]-a[1]);
+  $('srcBreakList').innerHTML = srcEntries.length
+    ? srcEntries.map(([name,n])=>{
+        const col=srcCloud[name]?'var(--cloud)':'var(--local)';
+        return `<span style="color:${col};font-weight:600">${esc(name)}</span> <span class="muted">×${n}</span>`;
+      }).join(' <span class="muted">·</span> ')
+    : '<span class="muted">–</span>';
   lat.sort((a,b)=>a-b);
   const avg=lat.length?lat.reduce((a,b)=>a+b,0)/lat.length:null;
   const p95=lat.length?lat[Math.min(lat.length-1,Math.floor(lat.length*0.95))]:null;
@@ -274,7 +304,7 @@ function detailRow(c){
   const [story,scol]=statusStory(c.status);
   const served=servedModel(c);
   const requested=(c.requested==null||c.requested==='')?'–':c.requested;
-  const routeTxt=ri.long + (isCloud(c)&&c.pool?(' · '+c.pool):'');
+  const routeTxt=ri.long + (isCloud(c)&&c.pool?(' · '+providerName(c.pool)):'');
   const f=(k,v)=>`<div class="dd-f"><span class="dd-k">${k}</span><span class="dd-v">${v}</span></div>`;
   return `<tr class="detail"><td colspan="9"><div class="dd">
       <div class="dd-story"><span class="badge ${ri.cls}">${esc(ri.label)}</span>
@@ -284,8 +314,9 @@ function detailRow(c){
         ${f('Task', esc(c.task||'–'))}
         ${f('Requested model', esc(requested))}
         ${f('Served model', esc(served))}
+        ${f('Source', '<b>'+esc(sourceLabel(c))+'</b>'+(isCloud(c)?' <span class="muted">(cloud)</span>':' <span class="muted">(local GPU)</span>'))}
         ${f('Route', esc(routeTxt))}
-        ${f('Pool', esc(isCloud(c)?(c.pool||'–'):'—'))}
+        ${f('Pool', esc(isCloud(c)?(providerName(c.pool)||'–'):'—'))}
         ${f('Mode', esc(c.mode||'–'))}
         ${f('Status', esc(String(c.status==null?'–':c.status)))}
         ${f('Latency', esc(fmtLatency(c.ms)))}
@@ -324,7 +355,7 @@ function renderFeed(){
     const task=(c.task==null||c.task==='')?'–':esc(c.task);
     const served=servedModel(c);
     const modelTitle=esc('requested: '+(c.requested==null?'-':c.requested)+'  →  served: '+served);
-    const poolChip=(isCloud(c)&&c.pool)?`<span class="sep">·</span><span class="chip">${esc(c.pool)}</span>`:'';
+    const poolChip=(isCloud(c)&&c.pool)?`<span class="sep">·</span><span class="chip">${esc(providerName(c.pool))}</span>`:'';
     const mode=(c.mode&&c.mode!=='failover')?`<span class="sep">·</span><span class="mode">${esc(c.mode)}</span>`:'';
     const k=rowKey(c), isOpen=openRows.has(k);
     html+=`<tr class="call${isOpen?' open':''}" data-k="${esc(k)}">
