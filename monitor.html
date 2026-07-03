@@ -89,6 +89,7 @@
     <div class="stat"><b id="sCloud" style="color:var(--cloud)">–</b><span>cloud</span></div>
     <div class="stat"><b id="sAvg">–</b><span>avg latency</span></div>
     <div class="stat"><b id="sP95">–</b><span>p95 latency</span></div>
+    <div class="stat"><b id="sSpend" style="color:var(--cloud)">–</b><span>spend (window)</span></div>
   </div>
 
   <div class="filters">
@@ -114,7 +115,7 @@
     <table>
       <thead><tr>
         <th style="width:14px"></th><th>Time</th><th>Caller</th><th>Task</th><th>Model</th><th>Route</th>
-        <th class="num">Status</th><th class="num">Latency</th>
+        <th class="num">Status</th><th class="num">Latency</th><th class="num">Cost</th>
       </tr></thead>
       <tbody id="feed"></tbody>
     </table>
@@ -180,6 +181,20 @@ function latencyCol(ms){
   if(ms==null||isNaN(+ms)) return "var(--dim)";
   ms=+ms; return ms>15000 ? "var(--bad)" : ms>5000 ? "var(--warn)" : "var(--fg)";
 }
+// Per-query USD cost. Local + free-pool calls report 0 => shown as a dim "$0" (free);
+// only a PAID cloud reply (OpenRouter usage.cost) shows a real dollar amount, in the
+// cloud accent so paid queries stand out at a glance.
+function costVal(c){ const v=+(c&&c.cost); return isNaN(v)?0:v; }
+function fmtCost(c){
+  const v=costVal(c);
+  if(!v) return '<span style="color:var(--dim)">$0</span>';
+  const s = v<0.01 ? ('$'+v.toFixed(5)) : ('$'+v.toFixed(4));
+  return '<span style="color:var(--cloud);font-weight:600">'+s+'</span>';
+}
+function fmtSpend(total){
+  if(!total) return '$0';
+  return total<0.01 ? ('$'+total.toFixed(5)) : ('$'+total.toFixed(total<1?4:2));
+}
 function statusCol(st){
   const s=+st; if(isNaN(s)) return "var(--dim)";
   if(s>=500) return "var(--bad)"; if(s>=400) return "var(--warn)";
@@ -221,16 +236,18 @@ async function poll(){
 
 function renderSummary(){
   const set=lastRecent.filter(passWin);   // strip reflects the selected time window (all types)
-  let o2=0,e4=0,e5=0,loc=0,cld=0; const lat=[];
+  let o2=0,e4=0,e5=0,loc=0,cld=0,spend=0; const lat=[];
   for(const c of set){
     const s=+((c&&c.status));
     if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
     if(isCloud(c)) cld++; else loc++;
+    spend += costVal(c);
     const ms=+(c&&c.ms); if(!isNaN(ms)) lat.push(ms);
   }
   $('sTotal').textContent=set.length;
   $('s2xx').textContent=o2; $('s4xx').textContent=e4; $('s5xx').textContent=e5;
   $('sLocal').textContent=loc; $('sCloud').textContent=cld;
+  $('sSpend').textContent=fmtSpend(spend);
   lat.sort((a,b)=>a-b);
   const avg=lat.length?lat.reduce((a,b)=>a+b,0)/lat.length:null;
   const p95=lat.length?lat[Math.min(lat.length-1,Math.floor(lat.length*0.95))]:null;
@@ -259,7 +276,7 @@ function detailRow(c){
   const requested=(c.requested==null||c.requested==='')?'–':c.requested;
   const routeTxt=ri.long + (isCloud(c)&&c.pool?(' · '+c.pool):'');
   const f=(k,v)=>`<div class="dd-f"><span class="dd-k">${k}</span><span class="dd-v">${v}</span></div>`;
-  return `<tr class="detail"><td colspan="8"><div class="dd">
+  return `<tr class="detail"><td colspan="9"><div class="dd">
       <div class="dd-story"><span class="badge ${ri.cls}">${esc(ri.label)}</span>
         <span style="color:${scol};font-weight:600">${esc(story)}</span></div>
       <div class="dd-grid">
@@ -272,6 +289,7 @@ function detailRow(c){
         ${f('Mode', esc(c.mode||'–'))}
         ${f('Status', esc(String(c.status==null?'–':c.status)))}
         ${f('Latency', esc(fmtLatency(c.ms)))}
+        ${f('Cost', costVal(c)?fmtCost(c):'<span style="color:var(--dim)">$0 (free)</span>')}
         ${f('When', esc(fmtFull(c.t))+' · '+esc(relAgo(c.t)))}
       </div></div></td></tr>`;
 }
@@ -280,7 +298,7 @@ function renderFeed(){
   const feed=$('feed');
   if(openRows.size){ const live=new Set(lastRecent.map(rowKey)); for(const k of [...openRows]) if(!live.has(k)) openRows.delete(k); }
   if(!lastRecent.length){
-    feed.innerHTML='<tr><td colspan="8"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
+    feed.innerHTML='<tr><td colspan="9"><div class="empty">no calls captured yet (router recently restarted, or idle) — the feed fills as requests flow</div></td></tr>';
     $('shown').textContent='';
     return;
   }
@@ -295,7 +313,7 @@ function renderFeed(){
                : TYPE==="local"  ? "no local calls"+w
                : TYPE==="slow"   ? "no calls slower than 5s"+w
                : "no calls"+w;
-    feed.innerHTML='<tr><td colspan="8"><div class="empty">'+esc(what)+'</div></td></tr>';
+    feed.innerHTML='<tr><td colspan="9"><div class="empty">'+esc(what)+'</div></td></tr>';
     return;
   }
   let html='';
@@ -318,6 +336,7 @@ function renderFeed(){
       <td><span class="badge ${ri.cls}">${esc(ri.label)}</span>${poolChip}${mode}</td>
       <td class="num" style="color:${statusCol(st)};font-weight:600">${stTxt}</td>
       <td class="num" style="color:${latencyCol(c.ms)}">${esc(fmtLatency(c.ms))}</td>
+      <td class="num">${fmtCost(c)}</td>
     </tr>`;
     if(isOpen) html+=detailRow(c);
   }
