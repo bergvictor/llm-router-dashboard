@@ -1,0 +1,2468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" id="themecolor" content="#eceff4">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>LLM Router — Live Dashboard</title>
+<!-- Link-preview card. This page is noindex/nofollow and stays that way: og: tags are read by
+     CHAT clients unfurling a pasted link (Slack, iMessage, Discord), which is a different code
+     path from search indexing, so the two do not conflict. og:image MUST be absolute — a relative
+     path resolves against the crawler, not this origin — and MUST be raster; every one of those
+     clients refuses SVG, which is why og.png exists alongside the mark. The card itself carries
+     only the product name and URL, no telemetry. -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://llm-router-dashboard.pages.dev/">
+<meta property="og:title" content="LLM Router — Live Dashboard">
+<meta property="og:description" content="Local-first LLM routing across free cloud providers: live capacity, latency, quota and cost.">
+<meta property="og:image" content="https://llm-router-dashboard.pages.dev/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script>
+// Stamp the theme BEFORE the body paints (stored choice -> light) so the first frame is already in
+// the right theme — no flash, and no reflow once the poller starts. routerApplyTheme() is the
+// SINGLE writer: html[data-theme] + <meta theme-color> + the toggle's aria state, so the button can
+// never advertise a theme the page is not in (it does not exist yet while this runs in <head>,
+// hence the DOMContentLoaded re-sync). Switching themes only flips one attribute: every colour on
+// this page is a custom property, so nothing re-renders, no data is refetched, the 15s poll timer
+// is untouched, and scroll position / open <details> / expanded pool rows all survive.
+// Storage key is 'router-theme' — deliberately NOT dock's 'dock-theme': the two consoles share a
+// look, not a preference.
+var THEME_META={light:'#eceff4',dark:'#0b0f17'};
+function routerApplyTheme(t){
+  t=(t==='dark')?'dark':'light';
+  document.documentElement.setAttribute('data-theme',t);
+  var m=document.getElementById('themecolor');if(m)m.setAttribute('content',THEME_META[t]);
+  var b=document.getElementById('themebtn');
+  if(b){b.setAttribute('aria-pressed',t==='dark'?'true':'false');
+        b.setAttribute('aria-label',t==='light'?'Switch to dark theme':'Switch to light theme');}
+}
+(function(){var t=null;try{t=localStorage.getItem('router-theme');}catch(e){}
+ // LIGHT IS THE UNCONDITIONAL DEFAULT (user directive 2026-07-25, same as the dock console).
+ // prefers-color-scheme is deliberately NOT consulted: this fleet runs a dark OS theme, so
+ // honouring it silently served a dark page to someone who had asked for the light one. Only an
+ // explicitly stored 'dark' overrides light.
+ if(t!=='light'&&t!=='dark')t='light';
+ routerApplyTheme(t);
+ document.addEventListener('DOMContentLoaded',function(){routerApplyTheme(document.documentElement.getAttribute('data-theme'));});}());
+function toggleTheme(){
+  var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+  var next=cur==='dark'?'light':'dark';
+  try{localStorage.setItem('router-theme',next);}catch(e){}
+  routerApplyTheme(next);
+}
+</script>
+<style>
+  /* ---- theme tokens ------------------------------------------------------------------------
+     Every colour on this page — chrome, status, chart series, bar tracks, tinted pills — is a
+     custom property, so a theme is exactly one attribute on <html> and costs zero re-renders.
+     LIGHT is the default scope (:root with no data-theme still resolves to it, so a page whose
+     head script somehow never ran still paints light rather than falling back to dark).
+     Light steps are AA text-grade on the card surfaces (verified: ok 5.44:1, warn 5.02:1,
+     bad 5.90:1, acc 6.29:1, local 5.47:1, cloud 7.10:1, dim 5.83:1 on #ffffff) which also puts
+     every one of them past the 3:1 non-text floor when the same token is used as a bar fill.
+     Dark keeps the exact hexes this dashboard has always shipped, so monitor.html / detail.html
+     stay in sync. ---------------------------------------------------------------------------- */
+  :root,:root[data-theme="light"]{
+    --bg:#eceff4;--card:#ffffff;--card2:#f5f7fa;--line:#dbe0e8;--line-strong:#b6bfcd;
+    --fg:#0f172a;--dim:#5b6675;
+    --ok:#0f7a37;--warn:#b45309;--bad:#c22323;--acc:#4f46e5;--cloud:#6d28d9;--local:#0f766e;
+    --ok-bg:#e7f6ed;--warn-bg:#fdf2d6;--bad-bg:#fdecec;--cloud-bg:#f0eafd;--local-bg:#dff2f0;--neutral-bg:#eef1f6;
+    --bar-bg:#dfe5ee;--chip-bg:#f2f5f9;--row-hover:#eef2f8;--seg-on:#e8eafd;
+    --hdr-bg:linear-gradient(180deg,#ffffffef,#f7f9fcf2);
+    --logo-a:#4f46e5;--logo-b:#7c3aed;
+    --spark-line:var(--acc);--spark-fill:rgba(79,70,229,.10);
+    --shadow-card:0 1px 2px rgba(15,23,42,.05);
+    /* categorical series slots — same hue family in both themes, re-stepped per surface.
+       Light set validated with the dataviz palette validator on #ffffff: lightness band PASS,
+       chroma floor PASS, normal-vision floor PASS (worst adjacent ΔE 15.3), contrast PASS
+       (all 14 >= 3:1). Every swatch on this page sits next to its text label, which is the
+       required secondary encoding for the residual amber/lime CVD adjacency. */
+    --s1:#1668c8;--s2:#c2510a;--s3:#00876a;--s4:#6d4bd6;--s5:#7d6a00;--s6:#c62e6e;--s7:#0e7fa8;
+    --s8:#b3401c;--s9:#2f7d10;--s10:#4f5bd5;--s11:#9c6200;--s12:#4f8a00;--s13:#a437a4;--s14:#0e8f7c;
+    color-scheme:light;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b0f17;--card:#131a26;--card2:#0f1521;--line:#1f2a3a;--line-strong:#33415a;
+    --fg:#e6edf6;--dim:#8fa3bd;
+    --ok:#2ec77a;--warn:#ffb84d;--bad:#ff5d6c;--acc:#4da3ff;--cloud:#b98cff;--local:#39d3a3;
+    --ok-bg:#12291f;--warn-bg:#2a2413;--bad-bg:#2b1418;--cloud-bg:#20182e;--local-bg:#12291f;--neutral-bg:#141c2a;
+    --bar-bg:#1b2536;--chip-bg:#1b2536;--row-hover:#161f2e;--seg-on:#152033;
+    --hdr-bg:linear-gradient(180deg,#0d131ef5,#0b0f17f2);
+    --logo-a:#3b6fe0;--logo-b:#7c4ddb;
+    --spark-line:var(--acc);--spark-fill:rgba(77,163,255,.12);
+    --shadow-card:none;
+    --s1:#4da3ff;--s2:#ff8f4d;--s3:#39d3a3;--s4:#b98cff;--s5:#ffd24d;--s6:#ff5d9e;--s7:#7bd1ff;
+    --s8:#ff7a45;--s9:#2ec77a;--s10:#8f9bff;--s11:#ffb84d;--s12:#76d94d;--s13:#e06de0;--s14:#5de0c0;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
+         padding-top:max(14px,env(safe-area-inset-top));position:sticky;top:0;
+         background:var(--hdr-bg);backdrop-filter:blur(12px);z-index:5;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+  /* ---- brandmark ----------------------------------------------------------------------------
+     Same construction as the dock console's `.logo` (28px rounded gradient tile, inset highlight,
+     one soft drop shadow) so the two consoles read as one system — but dock uses initials and this
+     uses a glyph: one inbound node fanning out to three, which is literally what the router does.
+     Inline SVG, not a file: these pages ship to Cloudflare Pages under a CSP that blocks every
+     external host, and an <img> would also cost a request the 15s poll loop doesn't need.
+     Its own --logo-a/--logo-b tokens rather than reusing --acc/--cloud: the dark theme's accents
+     (#4da3ff -> #b98cff) are tuned to be readable AS TEXT on a dark card, and a white glyph on top
+     of that pair drops to ~2.3:1. The dedicated stops stay deep enough for the glyph in both
+     themes. Decorative (aria-hidden): the <h1> already names the page. */
+  .brand{display:inline-flex;align-items:center;gap:11px;min-width:0}
+  /* The brandmark and wordmark are the way home. Inherit colour and drop the underline so
+   the header looks unchanged; only the cursor and focus ring reveal it is a link. */
+.logo-link{display:inline-flex;align-items:center;text-decoration:none;color:inherit;border-radius:9px}
+.logo-link:hover{opacity:.85}
+.logo-link:focus-visible{outline:2px solid var(--logo-a);outline-offset:2px}
+.logo{flex:none;width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
+        background:linear-gradient(140deg,var(--logo-a),var(--logo-b));color:#fff;
+        box-shadow:0 1px 2px rgba(15,23,42,.25),inset 0 1px 0 rgba(255,255,255,.22)}
+  /* wordmark sits in the <h1> so the lockup is one object: tile, name, state. `· live` became a
+     pill instead of inline punctuation — at 28px the mark read as an icon next to a sentence
+     rather than as a logo. */
+  .brand h1{display:inline-flex;align-items:baseline;gap:9px}
+  .bsub{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+        border:1px solid var(--line);border-radius:999px;padding:2px 8px;align-self:center}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 10px currentColor}
+  .muted{color:var(--dim)} .right{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:12.5px}
+  #navMonitor{color:var(--dim);text-decoration:none;font-size:12.5px;font-weight:600;padding:3px 10px;
+              border:1px solid var(--line);border-radius:999px;transition:color .15s,border-color .15s}
+  #navMonitor:hover{color:var(--acc);border-color:var(--acc)}
+  a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+  .section-nav{display:flex;gap:8px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;
+               padding:9px 20px;border-bottom:1px solid var(--line);background:var(--bg)}
+  .section-nav::-webkit-scrollbar{display:none}
+  .section-nav a{flex:0 0 auto;min-height:36px;display:inline-flex;align-items:center;padding:0 12px;border-radius:999px;
+                 border:1px solid var(--line);color:var(--dim);text-decoration:none;font-size:12px;font-weight:650}
+  .section-nav a:hover{color:var(--fg);border-color:var(--acc)}
+  .wrap{padding:18px 20px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-x:auto;
+        box-shadow:var(--shadow-card)}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px}
+  .col3{grid-column:span 3} .col4{grid-column:span 4} .col5{grid-column:span 5} .col6{grid-column:span 6}
+  .col7{grid-column:span 7} .col8{grid-column:span 8} .col12{grid-column:span 12}
+  @media(max-width:900px){.col3,.col4,.col5,.col6,.col7,.col8{grid-column:span 12}}
+  .big{font-size:30px;font-weight:680;line-height:1}
+  .sub{color:var(--dim);font-size:12px;margin-top:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{height:7px;border-radius:5px;background:var(--bar-bg);overflow:hidden;display:inline-flex;min-width:80px;vertical-align:middle}
+  .bar > i{display:block;height:100%}
+  .chip{display:inline-block;background:var(--chip-bg);border:1px solid var(--line);border-radius:999px;
+        padding:1px 8px;margin:2px 3px 0 0;font-size:11px;color:var(--dim)}
+  /* A non-zero failure counter must not read like a zero one. Colour ALONE is not enough here
+     (the chip sits in a row of identical grey chips), so an alert chip also gets a tinted
+     surface, a matching border and bold weight — legible in both themes and still legible with
+     colour vision deficiency. See renderNodes(): applied only when the counter is > 0. */
+  .chip.alert{font-weight:700}
+  .chip.alert-bad{color:var(--bad);background:var(--bad-bg);border-color:var(--bad)}
+  .chip.alert-warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn)}
+  .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
+  /* scoped to the sparkline on purpose: a bare `svg` selector also caught the header toggle's
+     sun/moon icons and stretched them to 100% x 60px */
+  #spark{display:block;width:100%;height:60px}
+  .iconbtn svg{display:block;width:15px;height:15px;flex:none}
+  .foot{padding:10px 20px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
+  .kv{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
+  .kv:last-child{border-bottom:0}
+  .mono{font-variant-numeric:tabular-nums}
+  /* ---- GPU detail card ---- */
+  .gpu{padding:10px 0;border-bottom:1px solid var(--line)}
+  .gpu:last-child{border-bottom:0;padding-bottom:0}
+  .gpu:first-child{padding-top:0}
+  .gpu-name{font-weight:650;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .gbar{height:10px;border-radius:6px;background:var(--bar-bg);overflow:hidden;width:100%}
+  .gbar > i{display:block;height:100%;transition:width .4s ease}
+  .glabel{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim);margin:8px 0 3px}
+  .gstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-top:10px}
+  .gstat{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:6px 8px;text-align:center}
+  .gstat b{display:block;font-size:15px;font-variant-numeric:tabular-nums;line-height:1.2}
+  .gstat span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  /* ---- pool drill-down ---- */
+  #cloudTable tr[data-pool]{cursor:pointer}
+  #cloudTable tr[data-pool]:hover{background:var(--row-hover)}
+  tr.detail > td{background:var(--card2);border-bottom:1px solid var(--line);padding:12px 16px;white-space:normal}
+  .dd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+  .dd-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:0 0 6px}
+  .dd-row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12.5px;border-bottom:1px dashed var(--line)}
+  .dd-row:last-child{border-bottom:0}
+  .caret{display:inline-block;width:9px;transition:transform .15s ease;color:var(--dim)}
+  .caret.open{transform:rotate(90deg)}
+  /* ---- docker containers ---- */
+  .dk-state{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;text-transform:capitalize}
+  #docker td.img,#docker td.ports{white-space:normal;word-break:break-all;color:var(--dim);font-size:12px}
+  #docker td.ports{max-width:260px}
+  #docker tr.dk-grp td{background:var(--card2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:700}
+  /* ---- per-hour chart ---- */
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+  .legi{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--dim)}
+  .legsw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .hchart{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:6px}
+  .hcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0;height:100%}
+  .hstack{width:100%;max-width:34px;display:flex;flex-direction:column-reverse;border-radius:3px 3px 0 0;overflow:hidden}
+  .hstack > i{display:block;width:100%}
+  .hstack.empty{background:var(--bar-bg);height:2px;border-radius:2px}
+  .hx{font-size:10px;color:var(--dim);margin-top:5px;font-variant-numeric:tabular-nums}
+  .htot{font-size:9.5px;color:var(--dim);margin-bottom:3px;font-variant-numeric:tabular-nums;min-height:12px}
+  .disclosure>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;
+                      min-height:30px;cursor:pointer;color:var(--dim);font-size:11px;font-weight:650;
+                      text-transform:uppercase;letter-spacing:.09em}
+  .disclosure>summary::-webkit-details-marker{display:none}
+  .disclosure>summary::after{content:'+';font-size:18px;line-height:1;color:var(--acc);font-weight:400}
+  .disclosure[open]>summary::after{content:'−'}
+  .disclosure[open]>summary{margin-bottom:10px}
+  .summary-note{text-transform:none;letter-spacing:0;font-size:11px;font-weight:500;margin-left:auto;text-align:right}
+  /* ---- latency tiles + dimension switcher + per-node meta (reuses .gstat/.chip vocabulary) ---- */
+  .lat-head{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .lat-head>.latnum{min-width:118px}
+  .lat-head .gstats{flex:1 1 250px;margin-top:0}
+  .seg{font:inherit;font-size:11px;font-weight:650;cursor:pointer;color:var(--dim);background:var(--chip-bg);
+       border:1px solid var(--line);border-radius:999px;padding:4px 11px;margin:0 5px 5px 0;
+       display:inline-flex;align-items:center;min-height:28px}
+  .seg:hover{color:var(--fg);border-color:var(--acc)}
+  .seg[aria-pressed="true"]{color:var(--fg);border-color:var(--acc);background:var(--seg-on)}
+  .node-meta{display:block;margin-top:5px;line-height:1.9}
+  .warn{color:var(--warn)}
+  /* theme toggle: sun/moon swap driven purely by data-theme, same control language as the dock
+     console's header button so the two pages read as one system */
+  .iconbtn{flex:none;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;
+           background:var(--card);border:1px solid var(--line-strong);border-radius:8px;color:var(--dim);cursor:pointer}
+  .iconbtn:hover{background:var(--card2);color:var(--fg);border-color:var(--acc)}
+  .iconbtn .i-sun{display:none}
+  .iconbtn .i-moon{display:inline-flex}
+  :root[data-theme="dark"] .iconbtn .i-sun{display:inline-flex}
+  :root[data-theme="dark"] .iconbtn .i-moon{display:none}
+
+  @media (max-width:640px), (max-width:900px) and (hover:none){
+    body{font-size:13.5px;padding-bottom:env(safe-area-inset-bottom)}
+    /* two columns since the brandmark absorbed the status dot and the title: .brand takes the
+       flexible one so the <h1> is what truncates, and the Monitor pill keeps its intrinsic width
+       instead of being stretched by the 1fr it used to sit in. */
+    header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;padding:10px 12px;backdrop-filter:none;
+           padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));
+           padding-top:max(10px,env(safe-area-inset-top))}
+    header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    #navMonitor{min-height:44px;display:inline-flex;align-items:center;padding:0 12px}
+    .iconbtn{width:44px;height:44px}
+    header .right{grid-column:1/-1;margin:0;justify-content:space-between;gap:10px;width:100%}
+    .section-nav{padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left))}
+    .section-nav a{min-height:44px}
+    .wrap{padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left));gap:10px}
+    .card{padding:12px;border-radius:10px;overflow:hidden;scroll-margin-top:112px}
+    .kpi{grid-column:span 6!important;min-height:102px}
+    .big{font-size:25px}
+    .sub{font-size:11.5px}
+    .chart-card #spark{height:48px}
+    .kv{gap:8px;align-items:flex-start;flex-wrap:wrap}
+    #nodes .kv{display:grid;grid-template-columns:minmax(0,1fr) auto}
+    #nodes .kv>span:first-child{min-width:0;overflow-wrap:anywhere}
+    #nodes .kv>.flex{align-items:flex-end;flex-direction:column;gap:4px}
+    #nodes .kv .muted[style]{min-width:0!important}
+    .gstats{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+    .gstat{padding:7px 4px}
+    .gstat b{font-size:13px;overflow-wrap:anywhere}
+    #cloudShare .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;min-height:48px;align-items:center}
+    #cloudShare .kv>span:first-child{overflow-wrap:anywhere}
+    #cloudShare .bar{display:none}
+    #cloudShare .flex{align-self:center}
+    .summary-note{max-width:58%;white-space:normal}
+    .disclosure>summary{min-height:44px;margin:-6px 0;padding:6px 0}
+    .disclosure[open]>summary{margin:-6px 0 8px}
+
+    /* Dense desktop tables become compact, readable phone cards. */
+    .mobile-table,.mobile-table tbody,.mobile-table tr{display:block;width:100%}
+    .mobile-table thead{display:none}
+    .mobile-table tbody>tr:not(.detail):not(.dk-grp){background:var(--card2);border:1px solid var(--line);
+      border-radius:10px;margin:0 0 9px;padding:8px 10px}
+    .mobile-table tbody>tr:not(.detail):not(.dk-grp)>td{display:flex;align-items:flex-start;justify-content:space-between;
+      gap:12px;border:0;padding:4px 0;white-space:normal;text-align:right!important;max-width:none!important;overflow:visible!important}
+    .mobile-table tbody>tr:not(.detail):not(.dk-grp)>td::before{color:var(--dim);font-size:10px;text-transform:uppercase;
+      letter-spacing:.05em;text-align:left;flex:0 0 auto}
+    .cloud-table tr[data-pool]{min-height:48px}
+    /* 13 columns since 2026-07-27 (Wins (today) inserted at 6). Phone keeps the day-scoped
+       win count and drops the run-scoped ones: after a restart those are all 0, which is the
+       least useful thing to show on the smallest screen. */
+    .cloud-table tr[data-pool]>td:nth-child(1),.cloud-table tr[data-pool]>td:nth-child(4),
+    .cloud-table tr[data-pool]>td:nth-child(5),.cloud-table tr[data-pool]>td:nth-child(7),
+    .cloud-table tr[data-pool]>td:nth-child(8),.cloud-table tr[data-pool]>td:nth-child(9),
+    .cloud-table tr[data-pool]>td:nth-child(10){display:none!important}
+    .cloud-table tr[data-pool]>td:nth-child(2){font-size:14px;text-align:left!important;justify-content:flex-start!important}
+    .cloud-table tr[data-pool]>td:nth-child(3)::before{content:'Model'}
+    .cloud-table tr[data-pool]>td:nth-child(6)::before{content:'Wins (today)'}
+    .cloud-table tr[data-pool]>td:nth-child(11)::before{content:'Quota'}
+    .cloud-table tr[data-pool]>td:nth-child(12)::before{content:'Tasks'}
+    .cloud-table tr[data-pool]>td:nth-child(13)::before{content:'Status'}
+    tr.detail{display:block;margin:-5px 0 10px}
+    tr.detail>td{display:block!important;padding:12px!important;border:1px solid var(--line);border-radius:0 0 10px 10px}
+    .dd-grid{grid-template-columns:1fr;gap:12px}
+    .docker-table tr.dk-grp{display:block;margin:12px 0 6px}
+    .docker-table tr.dk-grp td{display:block;padding:8px;border-radius:7px;white-space:normal}
+    .docker-table tr:not(.dk-grp)>td:nth-child(2),.docker-table tr:not(.dk-grp)>td:nth-child(5){display:none!important}
+    .docker-table tr:not(.dk-grp)>td:nth-child(3)::before{content:'State'}
+    .docker-table tr:not(.dk-grp)>td:nth-child(4)::before{content:'Status'}
+    .callers-table tr>td:nth-child(2)::before{content:'Requests'}
+    .callers-table tr>td:nth-child(3)::before{content:'Routing'}
+    .callers-table tr>td:nth-child(4)::before{content:'Success'}
+    .callers-table tr>td:nth-child(5)::before{content:'Tasks'}
+    .callers-table .bar{min-width:92px!important;width:92px!important}
+    .seg{min-height:44px;padding:0 13px}
+    .lat-head{gap:10px}
+    .lat-head .gstats{flex-basis:100%}
+    .lat-table tr>td:nth-child(1),.task-table tr>td:nth-child(1),.err-table tr>td:nth-child(1){
+      font-size:14px;text-align:left!important;justify-content:flex-start!important}
+    .lat-table tr>td:nth-child(2)::before{content:'Calls'}
+    .lat-table tr>td:nth-child(3)::before{content:'Avg'}
+    .lat-table tr>td:nth-child(4)::before{content:'p50'}
+    .lat-table tr>td:nth-child(5)::before{content:'p95'}
+    .lat-table tr>td:nth-child(6)::before{content:'Success'}
+    .lat-table tr>td:nth-child(7){display:none!important}
+    .task-table tr>td:nth-child(2)::before{content:'Requests'}
+    .task-table tr>td:nth-child(3)::before{content:'Local / Cloud'}
+    .task-table tr>td:nth-child(4)::before{content:'Success'}
+    .task-table tr>td:nth-child(5)::before{content:'Avg'}
+    .task-table tr>td:nth-child(6)::before{content:'p95'}
+    .task-table tr>td:nth-child(7)::before{content:'Cost'}
+    .task-table tr>td:nth-child(8)::before{content:'Tokens out'}
+    .err-table tr>td:nth-child(2)::before{content:'Caller'}
+    .err-table tr>td:nth-child(3)::before{content:'Task'}
+    .err-table tr>td:nth-child(4)::before{content:'Pool / model'}
+    .err-table tr>td:nth-child(5)::before{content:'Node'}
+    .err-table tr>td:nth-child(6)::before{content:'Status'}
+    .err-table tr>td:nth-child(7)::before{content:'Latency'}
+    #hourChart.hchart{min-width:620px}
+    #hourChart{overflow:visible}
+    .hour-scroll{overflow-x:auto;overscroll-behavior-inline:contain;padding-bottom:4px}
+    .foot{padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+  }
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.gbar>i,#navMonitor,.caret{transition:none}.dot{box-shadow:none}}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">
+    <!-- Clicking the brandmark returns to this overview from any deep-linked tab. -->
+    <a class="logo-link" href="/" aria-label="Back to the main dashboard" title="Back to the main dashboard">
+    <span class="logo" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 11 5.6 5"/><path d="M16 11l2.4-6"/>
+        <rect x="2.6" y="11" width="18.8" height="8" rx="2.4"/>
+        <circle cx="6.2" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="8.9" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="11.6" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="14.3" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="18.2" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+    </a>
+    <h1><a class="logo-link" href="/">LLM Router</a> <span class="bsub">live</span></h1>
+    <span class="dot" id="statusDot" role="status" aria-label="Router status unknown" style="color:var(--dim)">●</span>
+  </span>
+  <a href="monitor.html" id="navMonitor">Monitor →</a>
+  <div class="right">
+    <span id="throughput" class="muted">– req/min</span>
+    <span id="updated" class="muted" aria-live="polite">connecting…</span>
+    <button id="themebtn" class="iconbtn" type="button" aria-label="Toggle light or dark theme" aria-pressed="false" title="Toggle light / dark" onclick="toggleTheme()">
+      <svg class="i-moon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z"/></svg>
+      <svg class="i-sun" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1"/></svg>
+    </button>
+  </div>
+</header>
+
+<nav class="section-nav" aria-label="Dashboard sections">
+  <a href="#overview">Overview</a><a href="#latency">Latency</a><a href="#tokensCard">Throughput</a>
+  <a href="#hardware">Hardware</a><a href="#services">Services</a><a href="#cloud">Cloud</a>
+  <a href="#quotaCard">Quota</a><a href="#keyHealthCard">Keys</a><a href="#tasksCard">Tasks</a><a href="#callersCard">Callers</a>
+  <a href="#errorsCard">Failures</a>
+</nav>
+
+<div class="wrap" id="overview">
+  <div class="card col3 kpi"><h2>Router</h2><div class="big" id="kRouter">–</div><div class="sub" id="kPort">port –</div><div class="sub" id="kBadges"></div></div>
+  <div class="card col3 kpi"><h2 id="requestsTitle">Requests today</h2><div class="big" id="kReq">–</div><div class="sub" id="kRate">– req/min now</div><div class="sub" id="kUnattr"></div></div>
+  <!-- CALLER-FACING, and the sub-label says so. A request that 4xx'd upstream and was rescued by
+       the fallback chain is a SUCCESS here — that is the router working as designed — so this card
+       cannot be read as "nothing failed anywhere". Observed 2026-08-05: 100.0% / 0 4xx / 0 5xx while
+       google returned 23 4xx on 23 attempts. The upstream story lives in Fallback depth (how deep
+       calls had to go) and Cooldowns (hops benched after 429/5xx); the tooltips point there. -->
+  <div class="card col3 kpi"><h2 id="successTitle">Success rate today</h2><div class="big" id="kOk"
+       title="What callers received, end to end. A call that failed upstream and was rescued by the fallback chain counts as a success here — see Fallback depth and Cooldowns for what happened underneath.">–</div><div class="sub" id="kErr"
+       title="Status codes RETURNED TO CALLERS, not upstream attempts. A provider that 4xx'd and was retried further down the chain never appears in this number.">– errors</div></div>
+  <div class="card col3 kpi"><h2>Cloud spend today</h2><div class="big" id="kSpend">–</div><div class="sub" id="kBudget">budget –</div></div>
+
+  <div class="card col8" id="latency"><h2 id="latencyTitle">Latency today — end-to-end response time</h2>
+    <div class="lat-head">
+      <div class="latnum"><div class="big" id="latAvg">–</div><div class="sub" id="latAvgNote">average end-to-end</div></div>
+      <div class="gstats" id="latTiles"></div>
+    </div>
+    <div class="sub" id="latNote"></div></div>
+  <div class="card col4" id="statusCard"><h2 id="statusTitle">Status codes today</h2>
+    <div id="statusCodes" class="flex" style="flex-wrap:wrap;gap:6px;align-items:flex-start"></div>
+    <div class="sub" id="statusNote"></div></div>
+
+  <div class="card col8 chart-card"><h2>Throughput (req/min, last ~10 min)</h2><svg id="spark" role="img" aria-label="Recent requests per minute" viewBox="0 0 600 60" preserveAspectRatio="none"></svg></div>
+  <div class="card col4"><h2 id="routingTitle">Local vs Cloud today</h2>
+    <div class="flex" style="margin-bottom:8px"><span class="pill" style="background:var(--local-bg);color:var(--local)">Local <b id="locPct">–</b></span>
+      <span class="pill" style="background:var(--cloud-bg);color:var(--cloud)">Cloud <b id="cldPct">–</b></span></div>
+    <div class="bar" style="height:12px;width:100%"><i id="locBar" style="background:var(--local)"></i><i id="cldBar" style="background:var(--cloud)"></i></div>
+    <div class="sub"><span id="locN">–</span> local · <span id="cldN">–</span> cloud calls</div>
+  </div>
+
+  <div class="card col4" id="tokensCard"><h2 id="tokensTitle">Token throughput today</h2>
+    <div class="big" id="tokTps">–</div><div class="sub" id="tokSub">tokens per second</div>
+    <div id="tokens" style="margin-top:10px"></div><div class="sub" id="tokNote"></div></div>
+  <div class="card col4" id="hopsCard"><h2 id="hopsTitle">Fallback depth today</h2>
+    <div class="big" id="hopFirst">–</div><div class="sub" id="hopSub">won on the first hop</div>
+    <div id="hops" style="margin-top:10px"></div><div class="sub" id="hopNote"></div></div>
+  <div class="card col4" id="costCard"><h2 id="costTitle">Cost today — call history vs budget</h2>
+    <div id="cost"></div><div class="sub" id="costNote"></div></div>
+
+  <div class="card col4" id="runtimeCard"><h2>Runtime &amp; feed health</h2>
+    <div id="runtime"></div><div class="sub" id="runtimeNote"></div>
+    <details class="disclosure" id="feedDetails" style="margin-top:12px">
+      <summary><span>Dashboard feed pipeline</span><span class="summary-note muted" id="feedBrief">–</span></summary>
+      <div id="feed"></div></details></div>
+  <div class="card col4" id="sourcesCard"><h2 id="sourcesTitle">Sources today — what actually served</h2>
+    <div id="sources"></div><div class="sub" id="sourcesNote"></div></div>
+  <div class="card col4" id="captchaCard"><h2>Captcha — tile-pick lane and paid solvers</h2>
+    <div id="captchaBody"></div><div class="sub" id="captchaNote"></div></div>
+  <div class="card col4" id="cooldownCard"><h2>Cooldowns — hops resting after 429 / 5xx</h2>
+    <div id="cooldowns"></div><div class="sub" id="cooldownNote"></div></div>
+
+  <div class="card col5" id="hardware"><h2>Capacity — local GPU nodes</h2><div id="nodes"></div>
+    <div class="sub" id="queueStats" style="margin-top:10px"></div></div>
+  <div class="card col7"><h2>GPU detail — RTX nodes (main + fallback)</h2><div id="gpu"></div></div>
+
+  <div class="card col12" id="latencyDims"><details class="disclosure" id="latDimDetails" open>
+    <summary><span>Latency by pool / task / caller / node / model</span><span class="summary-note muted" id="latDimBrief">which provider is actually fast</span></summary>
+    <div id="latDimSwitch" role="group" aria-label="Latency dimension" style="margin-bottom:10px"></div>
+    <div id="latDimBody"></div></details></div>
+
+  <div class="card col12" id="tasksCard"><details class="disclosure" id="taskDetails" open>
+    <summary><span>Per-task breakdown today</span><span class="summary-note muted" id="taskBrief">–</span></summary>
+    <div id="taskBody"></div></details></div>
+
+  <div class="card col12" id="services"><details class="disclosure" id="dockerDetails" open>
+    <summary><span>Docker containers — MAIN only</span><span class="summary-note muted" id="dockerBrief">loading…</span></summary>
+    <div id="docker"></div></details></div>
+
+  <div class="card col12" id="cloud"><h2 id="cloudShareTitle">Cloud share today — which pool served</h2>
+    <div class="sub" id="cloudShareHead" style="margin-bottom:8px">–</div>
+    <div id="cloudShare"></div></div>
+
+  <div class="card col12" id="quotaCard"><h2>Free usage left — free-tier daily caps</h2>
+    <div class="sub" id="quotaHead">–</div>
+    <div id="quotaList" style="margin-top:8px"></div></div>
+
+  <div class="card col12" id="keyHealthCard"><h2>Provider keys — upstream account health</h2>
+    <div class="sub" id="keyHealthHead">–</div>
+    <div id="keyHealthList" style="margin-top:8px"></div>
+    <div class="sub" id="keyHealthNote" style="margin-top:8px"></div></div>
+
+  <div class="card col12"><details class="disclosure" id="poolDetails" open>
+    <summary><span>Cloud pools — this run, plus wins today</span><span class="summary-note muted" id="poolBrief">free fallback chain</span></summary>
+    <table class="mobile-table cloud-table"><thead><tr>
+      <th class="num">#</th><th>Pool</th><th>Model</th>
+      <th class="num">Attempts (run)</th><th class="num">Wins (run)</th>
+      <th class="num" title="Wins for the whole day, from traffic_today — survives a router restart, unlike the (run) columns">Wins (today)</th>
+      <th class="num">Win share (run)</th><th class="num">Success (run)</th>
+      <th class="num">429/4xx</th><th class="num">5xx</th><th>Daily quota</th><th>Serving tasks</th><th>Status</th>
+    </tr></thead><tbody id="cloudTable"></tbody></table>
+  </details></div>
+
+  <div class="card col12"><details class="disclosure" id="hourDetails" open>
+    <summary><span>Cloud calls per hour</span><span class="summary-note muted" id="hourScope">today · restart-safe</span></summary>
+    <div id="hourLegend" class="legend"></div>
+    <div class="hour-scroll"><div id="hourChart"></div></div>
+    <div class="sub" id="hourNote" style="margin-top:8px"></div>
+  </details></div>
+
+  <div class="card col12" id="callersCard"><h2 id="callersTitle">Callers today — who is using the router</h2>
+    <table class="mobile-table callers-table"><thead><tr><th>Caller</th><th class="num">Requests</th><th>Local / Cloud</th><th>Success</th><th>Tasks</th></tr></thead>
+    <tbody id="callers"></tbody></table>
+    <div class="sub" id="callersFoot"></div></div>
+
+  <div class="card col12" id="errorsCard"><details class="disclosure" id="errDetails">
+    <summary><span>Failures today — non-2xx calls</span><span class="summary-note muted" id="errBrief">–</span></summary>
+    <div id="errBody"></div></details></div>
+</div>
+<div class="foot">Cloudflare Pages · <span id="scopeNote">loading traffic scope</span> · data via Supabase every ~15s · <span id="ageNote">–</span> · <span id="feedNote">–</span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SUPA_URL="https://mnzdcxcolxiqprwkujxy.supabase.co";
+const SUPA_KEY="sb_publishable_arytda7OdDlO3k1D2LL4Eg_wsvwidF9";
+let lastTs=null, prev=null, spark=[], SPARKMAX=40;
+let lastMetrics={},lastStats={},lastHealth={},lastAgg={},pollTimer=null,polling=false;
+const PHONE=matchMedia('(max-width:640px), (max-width:900px) and (hover:none)').matches;
+const POLL_MS=(navigator.connection&&navigator.connection.saveData)?45000:15000;
+const CHAIN=["cloudflare","google","cloudflare","groq","groq","groq","cerebras","cerebras",
+  "github","github","github","github","github","ollama-cloud","zai","google","google","cohere",
+  "huggingface","ovh","ovh","ovh","ovh","kilo","openrouter"];
+
+// Shared pool -> colour map (reused by drill-down + share + per-hour chart legend/segments).
+// These are SERIES SLOTS (var(--s1..s14)), not literal hexes: the slot keeps its identity while
+// the theme picks the step that is legible on the current surface. That is what makes the theme
+// switch instant — the browser re-resolves every already-painted inline style, so nothing has to
+// be re-rendered and no data is refetched. The dark step of each slot is byte-identical to the
+// hex this page shipped before, so monitor.html / detail.html stay colour-consistent.
+//   s1 blue · s2 orange · s3 aqua · s4 violet · s5 yellow · s6 magenta · s7 sky
+//   s8 orange-red · s9 green · s10 periwinkle · s11 amber · s12 lime · s13 orchid · s14 mint
+const POOL_COLORS={groq:"var(--s1)",cerebras:"var(--s3)",mistral:"var(--s2)",google:"var(--s5)",
+  github:"var(--s4)",cloudflare:"var(--s8)",ollama:"var(--s7)","ollama-cloud":"var(--s7)",
+  zai:"var(--s6)",cohere:"var(--s9)",huggingface:"var(--s11)",nvidia:"var(--s12)",openrouter:"var(--s10)"};
+const SLOTS=14;
+function poolColor(p){
+  p=String(p==null?'':p);
+  if(POOL_COLORS[p]) return POOL_COLORS[p];
+  let h=0; for(let i=0;i<p.length;i++) h=(h*31+p.charCodeAt(i))>>>0;
+  return 'var(--s'+(h%SLOTS+1)+')';
+}
+
+// pool id -> provider display name (kept in sync with monitor.html / detail.html)
+const PROVIDER_NAMES={google:'Google',mistral:'Mistral',groq:'Groq',cerebras:'Cerebras',cloudflare:'Cloudflare',
+  github:'GitHub',nvidia:'NVIDIA',cohere:'Cohere',zai:'Z.ai','ollama-cloud':'Ollama Cloud',huggingface:'HuggingFace',
+  ovh:'OVH',kilo:'Kilo',llm7:'LLM7',vercel:'Vercel',longcat:'LongCat',openrouter:'OpenRouter',
+  sambanova:'SambaNova',modelscope:'ModelScope',lightning:'Lightning',prism:'Prism',euri:'EURI',
+  llmrack:'LLMRack',freeai:'Free.ai',fullai:'FullAI',bytez:'Bytez',aihorde:'AI Horde',
+  pollinations:'Pollinations',opencode:'OpenCode','sea-lion':'SEA-LION',sealion:'SEA-LION'};
+function providerName(p){if(!p)return'';const k=String(p).toLowerCase();return PROVIDER_NAMES[k]||p;}
+
+// ---------- WHICH LAPTOP IS WHICH ----------------------------------------------------------
+// THE ONLY HARDCODED HARDWARE MAP ON THIS PAGE. Everything else reads identity out of the
+// payload. The router names its local nodes by bare endpoint ("127.0.0.1:21434"), which tells a
+// reader nothing — and both boxes in this fleet are Lenovo Legions, so even "Legion" is ambiguous.
+// The product family is the discriminator, exactly like the dock console's `machine` contract
+// (dashboard_pusher.py MACHINE_KEYS = hostname/vendor/model/model_code/cpu/ram_gb/gpu/os/runtime).
+// Values the payload actually carries always win over these fallbacks — see laptopOf().
+const LAPTOPS={
+  MAIN   :{host:'MAIN'   ,vendor:'Lenovo',model:'Legion 9 18IAX10'    ,gpu:'RTX 5090 Laptop 24 GB',
+           role:'primary GPU node'},
+  LEVITIN:{host:'LEVITIN',vendor:'Lenovo',model:'Legion 5 Pro 16ACH6H',gpu:'RTX 3070 Laptop 8 GB',
+           role:'fallback GPU node'}};
+// Node ALIAS -> laptop. routing-rules.json has node_aliases {"new":"local","old":"old-laptop"},
+// and those server keys are deployment-independent: `local`/`local-batch` are always the new
+// Legion 9 (MAIN), `old-laptop` is always the Legion 5 Pro (LEVITIN). traffic_today.sources and
+// node_counts speak this alias vocabulary.
+const NODE_ALIAS_HOST={'new':'MAIN','local':'MAIN','local-batch':'MAIN','main':'MAIN',
+                       'old':'LEVITIN','old-laptop':'LEVITIN','levitin':'LEVITIN'};
+// ENDPOINT -> laptop. This one is DEPLOYMENT-DEPENDENT, so it needs a discriminator rather than a
+// flat table. tools/prepare_levitin_bundle.py rewrites the config to 127.0.0.1:21434 (MAIN's
+// ollama) and :21436 (MAIN's batch ollama) ONLY when the router is deployed ON LEVITIN — in that
+// layout LEVITIN's own ollama is plain loopback :11434. In the rollback layout (router on MAIN)
+// no 214xx port exists, loopback :11434 IS MAIN, and LEVITIN is reached as Levitin.local. So:
+// the presence of a reverse port anywhere in stats.servers tells us which layout we are looking at.
+const REVERSE_PORTS={'21434':'ollama, reverse-forwarded from LEVITIN',
+                     '21436':'batch ollama, reverse-forwarded from LEVITIN'};
+const BATCH_PORTS={'21436':1,'11436':1};
+// Unused local-batch node is hidden from Capacity. MAIN's :11436/:21436 batch
+// Ollama is still configured and reachable, but it serves 0 traffic and the
+// idle duplicate of the Legion 9 card is noise. Filter by port so a rollback
+// layout (:11436 on MAIN) and the LEVITIN reverse-forward (:21436) both stay off
+// this card. Do not delete BATCH_PORTS — monitor/source labels still use it.
+function isHiddenBatchNode(url){
+  const port=hostPortOf(url).split(':').pop();
+  return !!BATCH_PORTS[port];
+}
+function hostPortOf(url){
+  return String(url==null?'':url).replace(/^https?:\/\//i,'').replace(/\/.*$/,'').replace(/\/$/,'');
+}
+function isLoopback(h){return h==='127.0.0.1'||h==='localhost'||h==='::1'||h==='0.0.0.0';}
+// true when any configured local server uses a reverse-forward port => the router runs on LEVITIN
+function levitinDeployment(servers){
+  return Object.keys(servers||{}).some(u=>{const p=hostPortOf(u).split(':')[1];return !!REVERSE_PORTS[p];});
+}
+// endpoint -> {host, port, why} where host is a LAPTOPS key (or '' when it cannot be resolved —
+// an unknown endpoint is reported as unknown, never guessed onto a laptop).
+function nodeHostOf(url,servers){
+  const hp=hostPortOf(url), i=hp.lastIndexOf(':');
+  const h=(i<0?hp:hp.slice(0,i)).toLowerCase(), port=i<0?'':hp.slice(i+1);
+  if(/levitin/.test(h)||h==='192.168.1.62')return {host:'LEVITIN',port,why:'named host'};
+  if(REVERSE_PORTS[port])return {host:'MAIN',port,why:REVERSE_PORTS[port]};
+  if(isLoopback(h))return levitinDeployment(servers)
+    ? {host:'LEVITIN',port,why:'loopback on the box the router runs on'}
+    : {host:'MAIN',port,why:'loopback on the box the router runs on'};
+  return {host:'',port,why:''};
+}
+// Merge the hardcoded fallback with whatever the payload actually reports. metrics.docker.machine
+// describes the box the PUSHER runs on (MAIN); metrics.gpu / metrics.gpu_remote carry the real GPU
+// names. Anything the payload does not carry falls back to LAPTOPS, and an unresolved host stays
+// unnamed rather than being invented.
+function laptopOf(hostKey,m){
+  const base=LAPTOPS[hostKey];
+  if(!base)return null;
+  const out=Object.assign({},base);
+  m=m||{};
+  const dk=(m.docker&&typeof m.docker==='object')?m.docker:null;
+  const mach=(dk&&dk.machine&&typeof dk.machine==='object')?dk.machine:null;
+  // the docker block is sampled on ONE host; only borrow its machine fields for THAT host
+  if(mach&&String(dk.host||'MAIN').toUpperCase()===hostKey){
+    if(mach.model)out.model=String(mach.model);
+    if(mach.vendor)out.vendor=String(mach.vendor);
+    if(mach.gpu)out.gpu=String(mach.gpu);
+    if(mach.hostname)out.hostname=String(mach.hostname);
+    if(mach.cpu)out.cpu=String(mach.cpu);
+    if(isNum(mach.ram_gb))out.ram_gb=Number(mach.ram_gb);
+  }
+  // GPU name straight from nvidia-smi beats the fallback string on both hosts
+  const gpuName=hostKey==='MAIN'
+    ? (Array.isArray(m.gpu)&&m.gpu[0]&&m.gpu[0].name)
+    : (m.gpu_remote&&Array.isArray(m.gpu_remote.gpus)&&m.gpu_remote.gpus[0]&&m.gpu_remote.gpus[0].name);
+  if(gpuName)out.gpu=String(gpuName).replace(/^NVIDIA\s+GeForce\s+/i,'');
+  return out;
+}
+// "MAIN · Legion 9 18IAX10" — the label used everywhere a node appears
+function laptopLabel(hostKey,m){
+  const l=laptopOf(hostKey,m);
+  return l?(l.host+' · '+l.model):'';
+}
+// one-line hardware spec for a title=""
+function laptopSpec(hostKey,m){
+  const l=laptopOf(hostKey,m);
+  if(!l)return '';
+  return [l.vendor+' '+l.model,l.gpu,l.cpu,(l.ram_gb?l.ram_gb+' GB RAM':''),
+          (l.hostname?'hostname '+l.hostname:'')].filter(Boolean).join(' · ');
+}
+// alias ('new'/'old') or endpoint -> laptop label; '' when it resolves to nothing known
+function nodeLabelOf(nameOrUrl,servers,m){
+  const raw=String(nameOrUrl==null?'':nameOrUrl).trim();
+  const alias=NODE_ALIAS_HOST[raw.toLowerCase()];
+  if(alias)return laptopLabel(alias,m);
+  const r=nodeHostOf(raw,servers);
+  return r.host?laptopLabel(r.host,m):'';
+}
+// Convenience wrapper for the table renderers, which only ever hold a bare node name. Falls back
+// to the raw name so an alias this page has never heard of is shown verbatim, not swallowed.
+function nodeDisplay(name){
+  const raw=String(name==null?'':name).trim();
+  if(raw===''||raw==='-')return '-';
+  if(raw.toLowerCase()==='cloud')return 'cloud';
+  return nodeLabelOf(raw,lastStats&&lastStats.servers,lastMetrics)||raw;
+}
+
+// module-level open-set for pool drill-down; survives the 4s refresh
+const openPools=new Set();
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function finite(v,fallback=0){const n=Number(v);return Number.isFinite(n)?n:fallback;}
+function sumStatus(c,k){let n=0;for(const v of Object.values(c))n+=finite(v.status&&v.status[k]);return n;}
+function sumNodes(c){let loc=0,cld=0;for(const v of Object.values(c)){for(const[k,n]of Object.entries(v.nodes||{})){if(k==="cloud")cld+=finite(n);else loc+=finite(n);}}return{loc,cld};}
+function totalReq(c){let n=0;for(const v of Object.values(c))n+=finite(v.requests);return n;}
+function fmt(n){return finite(n).toLocaleString();}
+// NB: guards with isNum(), NOT Number.isFinite(Number(v)). Number(null) === 0, so the old version
+// printed a MISSING reading as a hard "0" — that is what made every GPU card claim "Fan 0%" when
+// nvidia-smi actually answers "[N/A]" (the pusher forwards that as JSON null). A metric that was
+// never read must never render as a number.
+function num(v,unit){return isNum(v)?(Number(v)+(unit||"")):"–";}
+function topModel(s){const m=s.models||{};let best="",bn=-1;for(const[k,v]of Object.entries(m)){if(v>bn){bn=v;best=k;}}return best;}
+
+// ---------- shared guards + formatters for the v3 metric blocks ----------
+// Every v3 field is optional: a router that has not been restarted yet simply omits it. isNum()
+// rejects null/''/undefined (Number(null)===0 would otherwise read as "present and zero"), and
+// firstNum() picks the first field that actually exists so a card can accept several spellings.
+const NEEDS_RESTART='requires a router restart to collect';
+function isNum(v){return v!=null&&v!==''&&Number.isFinite(Number(v));}
+function firstNum(){for(let i=0;i<arguments.length;i++){if(isNum(arguments[i]))return Number(arguments[i]);}return null;}
+function mutedLine(msg){return '<div class="muted" style="font-size:12px">'+esc(msg)+'</div>';}
+function kvRow(label,valueHtml,title){
+  return `<div class="kv"${title?` title="${esc(title)}"`:''}><span class="muted">${esc(label)}</span><span>${valueHtml}</span></div>`;
+}
+// ms -> "842ms" / "6.5s" / "2m 05s" (an LLM router answers in seconds, so plain ms is unreadable)
+function fmtMs(v){
+  if(!isNum(v))return '–';
+  const ms=Math.max(0,Number(v));
+  if(ms<1000)return Math.round(ms)+'ms';
+  if(ms<60000)return (ms/1000).toFixed(ms<10000?1:0)+'s';
+  const m=Math.floor(ms/60000);
+  return m+'m '+String(Math.round((ms-m*60000)/1000)).padStart(2,'0')+'s';
+}
+// latency colour bands. A local generation legitimately takes seconds, so 'typ' (avg/p50/p90)
+// only warns past 5s and 'tail' (p95/p99/max/queue wait) past 10s — anything tighter would paint
+// a healthy router amber all day.
+function msColor(v,kind){
+  if(!isNum(v))return 'var(--dim)';
+  const ms=Number(v), hi=kind==='tail'?30000:15000, mid=kind==='tail'?10000:5000;
+  return ms>=hi?'var(--bad)':ms>=mid?'var(--warn)':'var(--ok)';
+}
+function okColor(v){return !isNum(v)?'var(--dim)':Number(v)>=95?'var(--ok)':Number(v)>=85?'var(--warn)':'var(--bad)';}
+function pctTxt(v,digits){return isNum(v)?Number(v).toFixed(digits==null?0:digits)+'%':'–';}
+function fmtUsd(v){if(!isNum(v))return '–';const n=Number(v);return '$'+((n>0&&n<0.01)?n.toFixed(4):n.toFixed(2));}
+// compact token count: "940" / "12.4k" / "3.1M". A day's token spend runs to seven digits, which
+// is unreadable inline next to a two-digit request count.
+function fmtTok(v){
+  if(!isNum(v))return '–';
+  const n=Math.max(0,Number(v));
+  if(n<1000)return String(Math.round(n));
+  if(n<1e6)return (n/1e3).toFixed(n<1e4?1:0)+'k';
+  return (n/1e6).toFixed(n<1e7?1:0)+'M';
+}
+function humanBytes(v){
+  if(!isNum(v))return '–';
+  let n=Math.max(0,Number(v));const u=['B','KB','MB','GB','TB'];let i=0;
+  while(n>=1024&&i<u.length-1){n/=1024;i++;}
+  return (i?n.toFixed(n<10?1:0):String(Math.round(n)))+' '+u[i];
+}
+function humanDur(s){
+  if(!isNum(s))return '–';
+  const t=Math.max(0,Math.floor(Number(s)));
+  const d=Math.floor(t/86400),h=Math.floor(t%86400/3600),m=Math.floor(t%3600/60),sec=t%60;
+  if(d)return d+'d '+h+'h';
+  if(h)return h+'h '+m+'m';
+  if(m)return m+'m '+String(sec).padStart(2,'0')+'s';
+  return sec+'s';
+}
+// accepts epoch seconds, epoch millis or an ISO string -> epoch seconds (null when unusable)
+function epochOf(v){
+  if(isNum(v)){const n=Number(v);return n>1e12?n/1000:n;}
+  if(typeof v==='string'){const t=Date.parse(v);return Number.isFinite(t)?t/1000:null;}
+  return null;
+}
+function fmtClock(v){
+  const e=epochOf(v);
+  if(e==null)return '–';
+  const d=new Date(e*1000);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+}
+function ageOf(v){const e=epochOf(v);return e==null?null:Math.max(0,Date.now()/1000-e);}
+// the v3 by_* blocks may ship either a {key:count} map or [{key,n}] rows -> one normalised shape
+function toKeyRows(src,keyField,numField){
+  keyField=keyField||'key';numField=numField||'n';
+  const out=[];
+  if(Array.isArray(src)){
+    src.forEach(r=>{
+      if(r==null)return;
+      if(typeof r!=='object'){out.push({key:String(r),n:0});return;}
+      const k=r[keyField]!=null?r[keyField]:(r.name!=null?r.name:r.pool);
+      out.push({key:String(k==null?'-':k),n:finite(r[numField]!=null?r[numField]:r.count)});
+    });
+  }else if(src&&typeof src==='object'){
+    Object.entries(src).forEach(([k,v])=>out.push({key:String(k),n:finite(v)}));
+  }
+  return out.sort((a,b)=>b.n-a.n);
+}
+// runtime lives at stats.runtime (it is a /stats top-level key); tolerate a pusher that hoists it
+function runtimeBlock(m,stats){
+  if(stats&&stats.runtime&&typeof stats.runtime==='object')return stats.runtime;
+  if(m&&m.runtime&&typeof m.runtime==='object')return m.runtime;
+  return null;
+}
+function uptimeSecs(stats,rt){
+  const direct=firstNum(rt&&rt.uptime_s);
+  if(direct!=null)return direct;
+  const started=epochOf(stats&&stats.session&&stats.session.started_at);
+  if(started==null)return null;
+  const gen=firstNum(stats&&stats.generated_at);   // router clock, immune to browser clock skew
+  return Math.max(0,(gen!=null?gen:Date.now()/1000)-started);
+}
+function todayTraffic(stats){
+  const traffic=stats&&stats.traffic_today;
+  return traffic&&typeof traffic==='object'&&traffic.summary&&typeof traffic.summary==='object'?traffic:null;
+}
+function renderTrafficScope(traffic){
+  const persistent=!!traffic;
+  $('requestsTitle').textContent=persistent?'Requests today':'Requests since restart';
+  $('successTitle').textContent=persistent?'Success rate today':'Success rate since restart';
+  $('routingTitle').textContent=persistent?'Local vs Cloud today':'Local vs Cloud since restart';
+  $('cloudShareTitle').textContent=persistent?'Cloud share today — which pool served':'Cloud share this run — which pool served';
+  $('callersTitle').textContent=persistent?'Callers today — who is using the router':'Callers since restart — who is using the router';
+  // the v3 cards are all computed from today's persisted history, so say so when it is missing
+  $('latencyTitle').textContent=persistent?'Latency today — end-to-end response time':'Latency — needs today’s call history';
+  $('statusTitle').textContent=persistent?'Status codes today':'Status codes since restart';
+  $('tokensTitle').textContent=persistent?'Token throughput today':'Token throughput — needs today’s call history';
+  $('hopsTitle').textContent=persistent?'Fallback depth today':'Fallback depth — needs today’s call history';
+  $('costTitle').textContent=persistent?'Cost today — call history vs budget':'Cost — budget accounting only';
+  $('sourcesTitle').textContent=persistent?'Sources today — what actually served':'Sources — needs today’s call history';
+  $('hourScope').textContent=persistent?'today · restart-safe':'current run · legacy data';
+  $('scopeNote').textContent=persistent
+    ? 'today traffic persists across router restarts; run health resets with the router'
+    : 'legacy traffic counters reset with the router';
+}
+
+// stats.recent arrives in TWO shapes and this page reads both. Until 2026-08-05 the pusher sent a
+// plain array of row objects; it now sends a COLUMNAR pack — {v,cols,legend,rows} — where `rows`
+// holds one cell array per call in `cols` order, and any column listed in `legend` stores an INDEX
+// into that legend instead of repeating the string. Measured: the 500-row feed was 161 KB of a
+// 217 KB payload, because 18 key names plus a handful of repeated callers/models/pools were
+// re-spelled on every single row; packed it is 55 KB.
+// Normalising HERE, at the fetch boundary, is deliberate: errRowsOf() below still gets row objects
+// with `.iso` and `.status` on them and needs no change. Keeping the legacy array branch is what
+// makes the deploy order safe — this page ships first and reads the old shape, so no viewer ever
+// holds a cached page that cannot parse the payload it is being served.
+function unpackRecent(v){
+  if(Array.isArray(v))return v;
+  if(!v||typeof v!=='object'||!Array.isArray(v.cols)||!Array.isArray(v.rows))return [];
+  const cols=v.cols, legend=(v.legend&&typeof v.legend==='object')?v.legend:{};
+  return v.rows.map(cells=>{
+    const row={}, c=Array.isArray(cells)?cells:[];
+    for(let i=0;i<cols.length;i++){
+      const table=legend[cols[i]], cell=c[i];
+      row[cols[i]]=Array.isArray(table)
+        ? ((typeof cell==='number'&&cell>=0&&cell<table.length)?table[cell]:null)
+        : (cell===undefined?null:cell);
+    }
+    return row;
+  });
+}
+
+async function poll(){
+  if(polling||document.hidden)return;
+  polling=true;
+  // Every fetch on this path needs its OWN aborter. The snapshot fetch originally had none: the
+  // AbortController above is wired only to the primary, and `polling` latches true until a render
+  // completes, so a fallback that never settles freezes the page permanently with no recovery
+  // short of a manual reload -- the visibilitychange handler calls runPoll() which returns early
+  // on the same latch.
+  async function fetchWithTimeout(url, ms){
+    const c=(typeof AbortController!=='undefined')?new AbortController():null;
+    const t=c?setTimeout(()=>{try{c.abort();}catch(e){}},ms):null;
+    try{ return await fetch(url,{cache:"no-store",signal:c?c.signal:undefined}); }
+    catch(e){ return null; }
+    finally{ if(t)clearTimeout(t); }
+  }
+  let rec;
+  // Function-scoped on purpose: the timestamp line below reads this AFTER the
+  // try/catch, so a `let` inside the try is out of scope there and throws
+  // ReferenceError mid-render -- which is exactly what shipped on 2026-08-19 and
+  // left the page on 'connecting...' with the header half-rendered.
+  let usedSnapshot=false;
+  try{
+    // See monitor.html: `polling` is latched true above and gates every later poll, including the
+    // visibilitychange one, so a fetch that never settles freezes this page permanently on stale
+    // numbers with no error shown. AbortSignal.timeout is absent on iOS Safari before 16.4, and a
+    // stalled mobile connection can hang a fetch regardless. Always have an explicit aborter.
+    const ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const killer=ctl?setTimeout(()=>{try{ctl.abort();}catch(e){}},10000):null;
+    let response;
+    try{
+      response=await fetch(SUPA_URL+"/rest/v1/router_metrics?id=eq.1&select=metrics,updated_at",
+        {headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY},cache:"no-store",
+         signal:ctl?ctl.signal:undefined});
+      if(!response.ok)throw new Error("metrics HTTP "+response.status);
+    }catch(primaryErr){
+      // FALLBACK to the static snapshot shipped with this page.
+      // The hosted row is a single point of failure and it failed silently: on 2026-08-18 the
+      // Supabase project's hostname began returning NXDOMAIN (deleted, not paused - verified with
+      // getaddrinfo while supabase.co itself resolved), the pusher logged "getaddrinfo failed"
+      // once a minute, and this page showed dashes for every field with no reason given for 33
+      // hours. tools/write_static_metrics.py writes metrics.json in the same envelope, so a dead
+      // hosted store degrades to "stale but readable" instead of blank.
+      usedSnapshot=true;
+      response=await fetchWithTimeout("./metrics.json",8000);
+      if(!response||!response.ok)throw new Error("snapshot HTTP "+(response?response.status:"timeout"));
+    }finally{ if(killer)clearTimeout(killer); }
+    const row=await response.json();
+    rec=(row&&row[0])||{};
+    // A PostgREST 200 with an EMPTY array is `ok`, so the fallback above never fires: rec is {},
+    // age computes to 1e9, usedSnapshot stays false, and the page renders "stale" with no data and
+    // no explanation. Treat an empty/missing row as a failed primary and take the snapshot.
+    if(!usedSnapshot && !rec.updated_at){
+      const alt=await fetchWithTimeout("./metrics.json",8000);
+      if(alt&&alt.ok){ const arow=await alt.json(); const r2=(arow&&arow[0])||{};
+        if(r2.updated_at){ rec=r2; usedSnapshot=true; } }
+    }
+  }catch(e){
+    $('statusDot').style.color='var(--bad)'; $('statusDot').setAttribute('aria-label','Router data feed unavailable');
+    $('updated').textContent='no data feed'; $('kRouter').textContent='?';
+    polling=false;schedulePoll();return;
+  }
+  const m=rec.metrics||{}, health=m.health||{}, stats=m.stats||{};
+  if(stats.recent!=null)stats.recent=unpackRecent(stats.recent);   // packed OR legacy array
+  lastMetrics=m;lastStats=stats;lastHealth=health;
+  const traffic=todayTraffic(stats), summary=traffic&&traffic.summary;
+  const callers=traffic?(traffic.callers||{}):(stats.callers||{}), servers=stats.servers||{}, cloud=stats.cloud||{};
+  renderTrafficScope(traffic);
+  const age = rec.updated_at? (Date.now()-new Date(rec.updated_at).getTime())/1000 : 1e9;
+  const stale = age>60;
+  const fresh = rec.updated_at && rec.updated_at!==lastTs;
+
+  $('statusDot').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
+  $('statusDot').setAttribute('aria-label',stale?'Router data is stale':(health.router==='ok'?'Router is healthy':'Router is down'));
+  $('kRouter').textContent = health.router==='ok'?(stale?'STALE':'OK'):'DOWN';
+  $('kRouter').style.color = stale?'var(--warn)':(health.router==='ok'?'var(--ok)':'var(--bad)');
+  const rt=runtimeBlock(m,stats);
+  const rtHost=(rt&&rt.host)?String(rt.host):'', rtPort=firstNum(rt&&rt.port,health.port);
+  $('kPort').textContent = (rtHost?rtHost+':':'port ')+(rtPort==null?'–':rtPort)+' · '
+    +Object.values(health.servers||{}).filter(v=>v==='up').length+' local up · '
+    +Object.values(health.servers||{}).filter(v=>v==='cloud').length+' cloud adapters';
+  // the router process reports the port it listens on itself; clients use the published :11435
+  // endpoint, so a different number here is a deployment detail and NOT a fault.
+  $('kPort').title = (rtPort!=null&&rtPort!==11435)
+    ? 'router process listens on '+rtPort+(rtHost?' on host '+rtHost:'')+' · callers use the published :11435 endpoint'
+    : '';
+  $('kBadges').innerHTML = runtimeBadges(rt,stats);
+  $('updated').textContent = (stale?'⚠ stale ':'updated ')+Math.round(age)+'s ago'
+    + (usedSnapshot?' · static snapshot (live feed unreachable)':'');
+  // Naming the source matters: a snapshot is always older than the 60s stale threshold, so
+  // without this it reads as a merely-lagging live feed rather than a dead one.
+  $('updated').title = usedSnapshot
+    ? 'The hosted metrics row was unreachable; showing metrics.json shipped with this page.'
+    : 'Served from the live hosted metrics row.';
+  // A snapshot age is not a push age (2026-08-19) — see the same fix in monitor.html for the
+  // measurement. metrics.json is written only at deploy time, so calling its age "last push"
+  // describes a daemon that had nothing to do with the number.
+  $('ageNote').textContent = usedSnapshot
+    ? ('static snapshot, written '+Math.round(age)+'s ago — the LIVE FEED is unreachable '
+       + '(this is the copy shipped with the page; it does not refresh)')
+    : ('last push '+Math.round(age)+'s ago'+(stale?' — the FEED is stale; the router itself may be fine':''));
+  renderFeed(m,stale);
+
+  const tot=summary?finite(summary.requests):totalReq(callers);
+  const o2=summary?finite(summary['2xx']):sumStatus(callers,'2xx');
+  const e4=summary?finite(summary['4xx']):sumStatus(callers,'4xx');
+  const e5=summary?finite(summary['5xx']):sumStatus(callers,'5xx');
+  const eo=summary?finite(summary.other):sumStatus(callers,'other');
+  const okRate = tot?(100*o2/(o2+e4+e5||1)):0;
+  const unattr=finite((callers['-']||{}).requests);
+  lastAgg={tot,o2,e4,e5,other:eo,unattr};
+  $('kReq').textContent=fmt(tot);
+  // A '-' caller = a client that sent no X-Caller header and no /c/<caller>/ prefix. It is real
+  // traffic, so it is surfaced here AND as its own row in the callers table (never filtered away).
+  $('kUnattr').textContent = !tot?'' : unattr
+    ? fmt(unattr)+' unattributed ('+(100*unattr/tot).toFixed(0)+'%) — no caller header'
+    : 'every request is attributed to a caller';
+  $('kUnattr').style.color = (unattr&&tot&&(unattr/tot)>=0.2)?'var(--warn)':'';
+  $('kOk').textContent=(tot?okRate.toFixed(1):'–')+'%';
+  $('kOk').style.color = !tot?'var(--dim)':okRate>=95?'var(--ok)':okRate>=85?'var(--warn)':'var(--bad)';
+  $('kErr').textContent=fmt(e4)+' 4xx · '+fmt(e5)+' 5xx to callers';
+  const spend=finite(cloud.spent_today_usd), budget=finite(cloud.daily_budget_usd);
+  $('kSpend').textContent='$'+spend.toFixed(2);
+  const _sf = budget>0 ? spend/budget : 0;
+  $('kSpend').style.color = spend===0?'var(--ok)':(cloud.paused||_sf>=1)?'var(--bad)':_sf>=0.8?'var(--warn)':'var(--fg)';
+  $('kBudget').textContent='budget $'+budget.toFixed(0)+(cloud.paused?' · PAUSED':'')+' · inflight ~$'+finite(cloud.inflight_est_usd).toFixed(2);
+
+  if(traffic){
+    const rpm=finite(traffic.windows&&traffic.windows['60s']&&traffic.windows['60s'].completed);
+    const sessionReq=finite(stats.session&&stats.session.requests);
+    $('throughput').textContent=rpm.toFixed(0)+' req/min';
+    $('kRate').textContent=rpm.toFixed(0)+' req/min now · '+fmt(sessionReq)+' since restart';
+    const buckets=Array.isArray(traffic.minute_buckets)?traffic.minute_buckets:[];
+    spark=buckets.slice(-SPARKMAX).map(bucket=>finite(bucket&&bucket.requests));
+    if(!spark.length)spark=[rpm];
+    drawSpark();
+    if(fresh){lastTs=rec.updated_at;prev={ts:rec.updated_at,tot};}
+  }else if(fresh){
+    if(prev && prev.ts){ const dt=(new Date(rec.updated_at)-new Date(prev.ts))/1000;
+      if(dt>0){ const rpm=Math.max(0,(tot-prev.tot)/dt*60); $('throughput').textContent=rpm.toFixed(0)+' req/min';
+        $('kRate').textContent=rpm.toFixed(0)+' req/min now'; spark.push(rpm); if(spark.length>SPARKMAX)spark.shift(); drawSpark(); } }
+    prev={ts:rec.updated_at, tot}; lastTs=rec.updated_at;
+  }
+
+  const callerNodes=sumNodes(callers);
+  const loc=summary?finite(summary.local):callerNodes.loc, cld=summary?finite(summary.cloud):callerNodes.cld, tt=loc+cld||1;
+  const lp=(100*loc/tt), cp=(100*cld/tt);
+  $('locPct').textContent=lp.toFixed(0)+'%'; $('cldPct').textContent=cp.toFixed(0)+'%';
+  $('locBar').style.width=lp+'%'; $('cldBar').style.width=cp+'%';
+  $('locN').textContent=fmt(loc); $('cldN').textContent=fmt(cld);
+
+  renderNodes(servers,m);
+  renderQueueStats(traffic);
+  renderLatency(traffic);
+  renderStatusCodes(traffic,lastAgg);
+  renderTokens(traffic);
+  renderHops(traffic);
+  renderCost(stats);
+  renderRuntime(stats,rt,health);
+  renderSources(traffic,servers,m);
+  renderCaptcha(m,stats);
+  renderCooldowns(stats);
+  renderQuota(stats);
+  renderKeyHealth(stats);
+
+  renderGpu(m);
+  const dkShedList=(m.feed&&m.feed.shed)||null;
+  if($('dockerDetails').open)renderDocker(m.docker,dkShedList);else renderDockerBrief(m.docker,dkShedList);
+  renderCloud(stats, health);
+  if($('hourDetails').open)renderHourly(stats);
+  latDimBrief(stats);
+  if($('latDimDetails').open)renderLatencyDims(stats);
+  taskBrief(stats);
+  if($('taskDetails').open)renderTasks(stats);
+  errBrief(stats,lastAgg);
+  if($('errDetails').open)renderErrors(stats);
+
+  // Every caller is rendered, including the '-' bucket (clients that send no X-Caller header and
+  // no /c/<caller>/ path prefix). Dropping it used to make this table sum to LESS than the
+  // Requests KPI; a trailing "(unlisted)" row now closes any remaining gap by construction.
+  const rows=Object.entries(callers).sort((a,b)=>finite(b[1]&&b[1].requests)-finite(a[1]&&a[1].requests));
+  let shownReq=0;
+  let callerHtml=rows.map(([name,c])=>{
+    c=(c&&typeof c==='object')?c:{};
+    shownReq+=finite(c.requests);
+    let l=0,cl=0; for(const[k,v]of Object.entries(c.nodes||{})){if(k==='cloud')cl+=finite(v);else l+=finite(v);}
+    const t=l+cl||1, st=c.status||{}, s2=finite(st['2xx']),s4=finite(st['4xx']),s5=finite(st['5xx']),sT=s2+s4+s5||1, okr=100*s2/sT;
+    const tasks=Object.entries(c.tasks||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${esc(t)} ${fmt(n)}</span>`).join('');
+    const bare=name==='-'||name===''||name==null;
+    const label=bare
+      ? `<b class="muted">(unattributed)</b> <span class="muted" style="font-size:11px">no X-Caller header / no /c/&lt;caller&gt;/ prefix</span>`
+      : `<b>${esc(name)}</b>`;
+    const title=bare?' title="These clients sent no X-Caller header and no /c/<caller>/ path prefix, so the router cannot attribute them. Set either one to see them by name."':'';
+    return `<tr${title}><td>${label}</td><td class="num">${fmt(c.requests)}</td>
+      <td><div class="bar" title="${l} local / ${cl} cloud" style="width:120px"><i style="width:${100*l/t}%;background:var(--local)"></i><i style="width:${100*cl/t}%;background:var(--cloud)"></i></div>
+          <span class="muted mono" style="margin-left:6px">${(100*l/t).toFixed(0)}%L</span></td>
+      <td><span style="color:${okr>=95?'var(--ok)':okr>=85?'var(--warn)':'var(--bad)'}">${okr.toFixed(0)}%</span>
+          <span class="muted">${s4?(' · '+s4+' 4xx'):''}${s5?(' · '+s5+' 5xx'):''}</span></td>
+      <td>${tasks}</td></tr>`;
+  }).join('');
+  const gap=tot-shownReq;
+  if(gap>0){
+    callerHtml+=`<tr title="requests counted by the KPI that no caller row accounts for"><td><b class="muted">(unlisted)</b>
+      <span class="muted" style="font-size:11px">counted in the KPI, not present in the per-caller rows</span></td>
+      <td class="num">${fmt(gap)}</td><td class="muted">–</td><td class="muted">–</td><td></td></tr>`;
+  }
+  $('callers').innerHTML=callerHtml || '<tr><td class="muted" colspan="5">no traffic yet</td></tr>';
+  const listed=shownReq+Math.max(0,gap);
+  $('callersFoot').textContent = tot
+    ? `rows sum to ${fmt(listed)} of ${fmt(tot)} requests${listed===tot?' — matches the Requests KPI':' — KPI mismatch'}`
+    : '';
+  $('callersFoot').style.color = (tot&&listed!==tot)?'var(--warn)':'';
+  polling=false;schedulePoll();
+}
+
+function runPoll(){
+  poll().catch(()=>{polling=false;$('statusDot').style.color='var(--bad)';$('updated').textContent='render error';schedulePoll();});
+}
+function schedulePoll(delay=POLL_MS){
+  clearTimeout(pollTimer);
+  if(!document.hidden)pollTimer=setTimeout(runPoll,delay);
+}
+
+// ---------- 1) GPU detail (main box + optional remote fallback node) ----------
+// metrics.gpu = the machine the pusher runs on; metrics.gpu_remote (optional) = the LEVITIN
+// fallback node, sampled on a slower cadence and cached, so its age is shown explicitly.
+function renderGpu(m){
+  const local=Array.isArray(m&&m.gpu)?m.gpu:[];
+  const rem=(m&&m.gpu_remote&&typeof m.gpu_remote==='object')?m.gpu_remote:null;
+  let html = local.length
+    ? local.map(g=>gpuBox(g,'MAIN','',m)).join('')
+    : '<div class="muted">no GPU telemetry (pusher may be down or nvidia-smi missing)</div>';
+  if(rem){
+    const host=String(rem.host||'remote').toUpperCase();
+    const hostKey=LAPTOPS[host]?host:'';
+    const gpus=Array.isArray(rem.gpus)?rem.gpus:[];
+    if(rem.ok===false||!gpus.length){
+      const lbl=hostKey?laptopLabel(hostKey,m):host;
+      html+=`<div class="gpu"><div class="gpu-name"><span class="chip"${hostKey?` title="${esc(laptopSpec(hostKey,m))}"`:''}>${esc(lbl)}</span> fallback node</div>`
+        +mutedLine(rem.err?('GPU telemetry offline · '+rem.err):'no GPU telemetry from this node')+'</div>';
+    }else{
+      const ageS=firstNum(rem.age_s), stale=ageS!=null&&ageS>150;
+      const ageHtml=ageS!=null
+        ? `<span class="chip"${stale?' style="color:var(--warn)"':''} title="remote GPU telemetry is polled on a slower cadence and cached">sampled ${esc(humanDur(ageS))} ago</span>`
+        : (rem.sampled_at?`<span class="chip" title="last remote GPU sample">sampled ${esc(fmtClock(rem.sampled_at))}</span>`:'');
+      html+=gpus.map(g=>gpuBox(g,hostKey||host,ageHtml,m)).join('');
+    }
+  }
+  $('gpu').innerHTML=html;
+}
+function gpuBox(g,hostLabel,extraHtml,m){
+    g=(g&&typeof g==='object')?g:{};
+    const util=Number.isFinite(Number(g.util))?Math.max(0,Math.min(100,finite(g.util))):null;
+    const utilCol=util==null?'var(--dim)':util>=90?'var(--bad)':util>=60?'var(--warn)':'var(--acc)';
+    const used=Number.isFinite(Number(g.mem_used))?Math.max(0,finite(g.mem_used)):null;
+    const total=Number.isFinite(Number(g.mem_total))?Math.max(0,finite(g.mem_total)):null;
+    const usedG=(used==null)?null:(used/1024), totalG=(total==null)?null:(total/1024);
+    const memPct=(used!=null&&total>0)?Math.max(0,Math.min(100,100*used/total)):null;
+    const memCol=memPct==null?'var(--dim)':memPct>=90?'var(--bad)':memPct>=70?'var(--warn)':'var(--cloud)';
+    const t=Number.isFinite(Number(g.temp))?finite(g.temp):null;
+    const tempCol=t==null?'var(--dim)':t>80?'var(--bad)':t>=60?'var(--warn)':'var(--ok)';
+    // POWER. The pusher already asks nvidia-smi for power.limit; on both of these Legion laptop
+    // GPUs the driver answers "[N/A]", which the pusher forwards as null. The old guard used
+    // Number.isFinite(Number(null)) === true and rendered "21.94 W / 0 W" — a ratio against a
+    // limit that was never read. No limit => no denominator, and the tooltip says why. A limit is
+    // never invented here, and nothing in the pusher needs to change for this.
+    const power=isNum(g.power)?(Number(g.power)+' W'):'–';
+    const hasLim=isNum(g.power_limit)&&Number(g.power_limit)>0;
+    const powerLim=hasLim?(' / '+Number(g.power_limit)+' W'):'';
+    const powerTip=hasLim?'power draw against the board power limit'
+      :'power draw · this GPU does not expose power.limit (nvidia-smi answers [N/A]), so there is no denominator to show';
+    // FAN. Same story: the fan on these laptops is driven by the embedded controller, not the GPU,
+    // so fan.speed reads [N/A] -> null. "n/a" is the honest render; a literal 0 read as "the fan
+    // is not spinning while the GPU is at 41%", which is alarming and false.
+    const fanTip=isNum(g.fan)?'GPU fan speed as reported by nvidia-smi'
+      :'nvidia-smi reports fan.speed as [N/A] on this GPU — the fan is controlled by the laptop’s embedded controller, not the GPU';
+    // MEMORY BUS. utilization.memory is the share of TIME the memory bus was being read or
+    // written. It is NOT how full VRAM is (that is the VRAM bar above, from memory.used/total),
+    // and labelling it "Mem util" next to a 75%-full VRAM bar made a routine 100% look like an
+    // out-of-memory condition. Relabelled to what it measures.
+    const memBusTip='utilization.memory — share of the sampling window in which the VRAM bus was being read or written. This is bus activity, NOT how full VRAM is; see the VRAM bar above.';
+    return `<div class="gpu">
+      <div class="gpu-name">${hostLabel?`<span class="chip" title="${esc(laptopSpec(hostLabel,m)||'host this GPU belongs to')}">${esc(laptopLabel(hostLabel,m)||hostLabel)}</span> `:''}${esc(g.name||'GPU')}${extraHtml||''}</div>
+      <div class="glabel"><span>Utilization</span><span class="mono" style="color:${utilCol}">${util==null?'–':util+'%'}</span></div>
+      <div class="gbar"><i style="width:${util==null?0:util}%;background:${utilCol}"></i></div>
+      <div class="glabel"><span>VRAM</span><span class="mono" style="color:${memCol}">${
+          usedG==null||totalG==null?'– / – GB':usedG.toFixed(1)+' / '+totalG.toFixed(1)+' GB'
+        }${memPct==null?'':' · '+memPct.toFixed(0)+'%'}</span></div>
+      <div class="gbar"><i style="width:${memPct==null?0:memPct}%;background:${memCol}"></i></div>
+      <div class="gstats">
+        <div class="gstat"><b style="color:${tempCol}">${t==null?'–':t+'°'}</b><span>Temp</span></div>
+        <div class="gstat" title="${esc(powerTip)}"><b>${power}${powerLim}</b><span>Power</span></div>
+        <div class="gstat"><b>${num(g.clock_gfx,' MHz')}</b><span>Core clk</span></div>
+        <div class="gstat"><b>${num(g.clock_mem,' MHz')}</b><span>Mem clk</span></div>
+        <div class="gstat" title="${esc(fanTip)}"><b${isNum(g.fan)?'':' class="muted"'}>${isNum(g.fan)?num(g.fan,'%'):'n/a'}</b><span>Fan</span></div>
+        <div class="gstat" title="${esc(memBusTip)}"><b${isNum(g.util_mem)?'':' class="muted"'}>${isNum(g.util_mem)?num(g.util_mem,'%'):'n/a'}</b><span>Mem bus</span></div>
+      </div>
+    </div>`;
+}
+
+// ---------- 1b) Docker containers ----------
+// metrics.docker describes exactly ONE engine: the box the pusher runs on. host / host_detail /
+// control come from the pusher in the same vocabulary the dock console uses. LEVITIN runs a
+// SECOND, independent engine that this feed never samples, so the card says so rather than
+// letting half the fleet read as all of it. control='read-only' => never render action buttons
+// here: this dashboard has no command channel back to any host.
+const DK_SCOPE_NOTE='this feed samples one engine only — LEVITIN runs a second Docker engine that is not shown here';
+function dkHost(dk){return String((dk&&dk.host)||'MAIN').toUpperCase();}
+function dkShed(shed){return Array.isArray(shed)&&shed.indexOf('docker.containers')>=0;}
+function dkHeader(dk){
+  const detail=dk&&dk.host_detail?String(dk.host_detail):'';
+  const ro=String((dk&&dk.control)||'')==='read-only';
+  return `<div class="sub" style="margin:0 0 8px">`
+    +`<span class="chip" title="the only Docker engine this feed samples">${esc(dkHost(dk))}</span> `
+    +(detail?`${esc(detail)} · `:'')
+    +(ro?`<span class="chip" title="this dashboard has no control channel — container controls live on the home Docker console">read-only</span> · `:'')
+    +`<span class="muted">${esc(DK_SCOPE_NOTE)}</span></div>`;
+}
+function renderDockerBrief(dk,shed){
+  // "not sampled yet" is NOT "daemon down": a payload without a docker block must not be reported
+  // as an outage the pusher never claimed.
+  if(!dk||typeof dk!=='object'){$('dockerBrief').textContent='not reported';return;}
+  if(dk.ok!==true){$('dockerBrief').textContent=dkHost(dk)+' · offline';return;}
+  if(dkShed(shed)){$('dockerBrief').textContent=dkHost(dk)+' · list dropped (payload too large)';return;}
+  const cs=Array.isArray(dk.containers)?dk.containers:[];
+  const running=cs.filter(c=>String(c&&c.state||'').toLowerCase()==='running').length;
+  const stacks=new Set(cs.map(c=>String(c&&c.project||'standalone'))).size;
+  $('dockerBrief').textContent=dkHost(dk)+' · '
+    +(cs.length?`${running}/${cs.length} running · ${stacks} stacks`:'no containers');
+}
+function renderDocker(dk,shed){
+  const el=$('docker');
+  // Expanding the card before the first poll lands (or on a payload with no docker block) used to
+  // assert "Docker daemon not running" - an outage claim this feed has no evidence for. Say what
+  // is actually true: nothing has been sampled yet. No host chip here either: with no payload we
+  // do not know which engine would have answered.
+  if(!dk||typeof dk!=='object'){
+    $('dockerBrief').textContent='not reported';
+    el.innerHTML=mutedLine('No Docker sample in this payload yet — waiting for the next telemetry push.');
+    return;
+  }
+  const hdr=dkHeader(dk);
+  if(dk.ok!==true){
+    const err=dk.err?esc(dk.err):'docker not installed';
+    $('dockerBrief').textContent=dkHost(dk)+' · offline';
+    el.innerHTML=hdr+`<div class="muted">Docker daemon not running <span style="color:var(--dim)">· ${err}</span></div>`;
+    return;
+  }
+  // A list shed by the payload guard is NOT an empty fleet — say which it is.
+  if(dkShed(shed)){
+    $('dockerBrief').textContent=dkHost(dk)+' · list dropped (payload too large)';
+    el.innerHTML=hdr+mutedLine('Container list dropped from this push to keep the payload under the size limit — the containers are still there.');
+    return;
+  }
+  const cs=Array.isArray(dk.containers)?dk.containers:[];
+  if(!cs.length){ $('dockerBrief').textContent=dkHost(dk)+' · no containers';el.innerHTML=hdr+'<div class="muted">no containers</div>'; return; }
+  const isRun=c=>String(c.state==null?'':c.state).toLowerCase()==='running';
+  const stateStyle=st=>{
+    const s=String(st==null?'':st).toLowerCase();
+    if(s==='running') return 'background:var(--ok-bg);color:var(--ok)';
+    if(s==='exited'||s==='dead') return 'background:var(--bad-bg);color:var(--bad)';
+    if(s==='paused'||s==='created') return 'background:var(--warn-bg);color:var(--warn)';
+    return 'background:var(--neutral-bg);color:var(--dim)';
+  };
+  // group by compose project (fallback: standalone); stacks with more containers first
+  const groups={};
+  for(const c of cs){ const g=(c.project&&String(c.project))||'standalone'; (groups[g]=groups[g]||[]).push(c); }
+  const gnames=Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+  const running=cs.filter(isRun).length;
+  $('dockerBrief').textContent=`${dkHost(dk)} · ${running}/${cs.length} running · ${gnames.length} stacks`;
+  const summary=hdr+`<div class="sub" style="margin:0 0 10px">${cs.length} containers on ${esc(dkHost(dk))} · `+
+    `<b style="color:var(--ok)">${running} running</b> · ${cs.length-running} stopped · `+
+    `${gnames.length} stack${gnames.length===1?'':'s'}</div>`;
+  const row=c=>{ const st=c.state==null?'':c.state; return `<tr>
+      <td><b>${esc(c.name)||'–'}</b></td>
+      <td class="img"><span title="${esc(c.image)}">${esc(c.image)||'–'}</span></td>
+      <td><span class="dk-state" style="${stateStyle(st)}">${esc(st)||'?'}</span></td>
+      <td class="muted">${esc(c.status)||'–'}</td>
+      <td class="ports">${esc(c.ports)||'<span class="muted">–</span>'}</td></tr>`; };
+  let body='';
+  for(const g of gnames){
+    const list=groups[g].slice().sort((a,b)=>(isRun(b)?1:0)-(isRun(a)?1:0));
+    const run=list.filter(isRun).length;
+    body+=`<tr class="dk-grp"><td colspan="5">${esc(g)} <span class="muted">· ${run}/${list.length} running</span></td></tr>`;
+    body+=list.map(row).join('');
+  }
+  el.innerHTML=summary+`<table class="mobile-table docker-table"><thead><tr>
+      <th>Name</th><th>Image</th><th>State</th><th>Status</th><th>Ports</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+// ---------- 2) Cloud pools table + drill-down ----------
+function renderCloud(stats, health){
+  const pools=stats.pools||{};
+  const traffic=todayTraffic(stats);
+  const shareScope=traffic?'today':'this router run';
+  const chain=(stats.cloud_chain&&stats.cloud_chain.length)? stats.cloud_chain.map(h=>h.pool) : CHAIN;
+  const chainModel={}; (stats.cloud_chain||[]).forEach(h=>chainModel[h.pool]=h.model);
+  const cooldown=stats.cloud_cooldown||{};
+  const hs=health.servers||{};
+
+  const order=[...new Set(chain)];
+  Object.keys(pools).forEach(p=>{ if(!order.includes(p)) order.push(p); });
+
+  const totalServed=Object.values(pools).reduce((a,s)=>a+finite(s.served),0);
+
+  // Compact restart-safe daily share — MODEL · provider, by wins. Prefer traffic_today's
+  // persistent pool rows; old routers fall back to their since-restart pool rows. EXPAND each
+  // hop's models submap so a meta-hop (e.g. openrouter/free) lists each real served model. Each
+  // entry's win count is the hop's `served` — NOT the models-submap value, which carries ATTEMPTS
+  // (e.g. google's {gemini-3.5-flash:209} vs served 205). Falls back to the legacy per-pool
+  // `pools` aggregate only when neither daily nor per-run pool_rows are available.
+  const shareSrc = traffic&&Array.isArray(traffic.pool_rows)
+    ? traffic.pool_rows : (Array.isArray(stats.pool_rows) ? stats.pool_rows : null);
+  const shareEntries=[]; const shareIdx={};
+  const addShare=(model,pool,wins,rowKey)=>{
+    wins=finite(wins);
+    if(!(wins>0)) return;
+    const k=pool+''+model;
+    if(shareIdx[k]!=null){ const e=shareEntries[shareIdx[k]]; e.wins+=wins; if(wins>e._w){e._w=wins;e.rowKey=rowKey;} }
+    else { shareIdx[k]=shareEntries.length; shareEntries.push({model,pool,wins,rowKey,_w:wins}); }
+  };
+  if(shareSrc){
+    shareSrc.forEach(r=>{
+      const pool=String(r.pool||''), won=finite(r.served);
+      if(!(won>0)) return;
+      const rowKey=pool+'|'+(r.model||'');           // drill target = the parent HOP row in the table
+      const mm=r.models||{}, mk=Object.keys(mm);
+      if(mk.length>1){
+        // meta-hop with several real models: split the hop's wins by attempt share (submap = attempts)
+        const attSum=mk.reduce((a,kk)=>a+finite(mm[kk]),0)||1; let acc=0;
+        mk.forEach((name,i)=>{ const w=(i===mk.length-1)?(won-acc):Math.round(won*finite(mm[name])/attSum); acc+=w; addShare(name,pool,w,rowKey); });
+      } else {
+        addShare(mk[0]||r.model||'?',pool,won,rowKey);
+      }
+    });
+  } else {
+    // legacy (old router, no pool_rows): one entry per pool (unique keys → no duplication)
+    Object.entries(pools).forEach(([pool,s])=>addShare(chainModel[pool]||topModel(s)||pool,pool,finite(s.served),pool+'|'));
+  }
+  shareEntries.sort((a,b)=>b.wins-a.wins);
+  const shareTotal=shareEntries.reduce((a,e)=>a+e.wins,0);
+  const activePools=new Set(shareEntries.map(e=>e.pool)).size;
+  $('poolBrief').textContent=`${prowsCount(stats)} hops · ${activePools} pool${activePools===1?'':'s'} used ${shareScope}`;
+
+  const completedInScope=traffic?finite(traffic.summary&&traffic.summary.requests):null;
+  $('cloudShareHead').innerHTML = shareTotal
+     ? `${fmt(shareTotal)} cloud calls served ${shareScope} · ${activePools} pool${activePools===1?'':'s'} used · top models by wins`
+     : completedInScope===0
+       ? 'No completed LLM calls recorded today yet.'
+       : `local-first is handling everything — no overflow to cloud yet ${shareScope}`;
+
+  const SHARE_CAP=12, shareShown=shareEntries.slice(0,SHARE_CAP);
+  let shareHtml=shareShown.map((e,i)=>{
+     const pct=100*e.wins/(shareTotal||1);
+     return `<div class="kv" data-rowkey="${esc(e.rowKey)}" role="button" tabindex="0" style="cursor:pointer" title="drill into ${esc(providerName(e.pool))} in the pools table">
+       <span><span class="muted mono" style="margin-right:4px">${i+1}.</span><span class="legsw" style="background:${poolColor(e.pool)}"></span> <b>${esc(e.model)}</b> <span class="muted">· ${esc(providerName(e.pool))}</span></span>
+       <span class="flex gap6"><span class="bar" style="width:130px"><i style="width:${pct}%;background:${poolColor(e.pool)}"></i></span>
+       <span class="muted mono" style="min-width:78px;text-align:right">${fmt(e.wins)} · ${pct.toFixed(0)}%</span></span></div>`;
+  }).join('');
+  if(shareEntries.length>SHARE_CAP){
+     const restWins=shareEntries.slice(SHARE_CAP).reduce((a,e)=>a+e.wins,0);
+     shareHtml+=`<div class="kv"><span class="muted">+${shareEntries.length-SHARE_CAP} more</span>
+       <span class="muted mono" style="min-width:78px;text-align:right">${fmt(restWins)} wins</span></div>`;
+  }
+  $('cloudShare').innerHTML = shareHtml || '<div class="muted">When the local GPUs are free, no requests reach the cloud. Overflow (congestion / local down) shows up here per pool.</div>';
+
+  // The per-hop diagnostic table is expensive and visually secondary on a phone. Keep the
+  // always-visible share summary fresh, but defer the table until its disclosure is opened.
+  if(!$('poolDetails').open)return;
+
+  // full per-(pool,model) table — one row per fallback-chain HOP (server+model), each clickable
+  // (detail row injected when open). Prefers the router's new per-hop stats.pool_rows (removes the
+  // old duplicated-google artifact); falls back to the legacy per-pool shape if pool_rows is absent.
+  const prows = Array.isArray(stats.pool_rows) ? stats.pool_rows : null;
+  // TODAY-scoped wins per hop. stats.pool_rows counts only the CURRENT ROUTER RUN, so after any
+  // restart every one of these ~19 rows reads 0 attempts / 0 wins even though the day has served
+  // hundreds of calls — the table looked dead exactly when someone was most likely checking it
+  // (observed 2026-07-27: 62 cloud calls served, whole table zeroed by a 17-minute-old restart).
+  // traffic_today.pool_rows carries the same (pool, model) split for the whole day and survives
+  // restarts, so it is shown alongside rather than replacing the run counters — "is this hop
+  // working right now" and "did this hop do anything today" are both real questions.
+  const todayWins=(()=>{
+    const m=Object.create(null);
+    const tr=stats&&stats.traffic_today&&stats.traffic_today.pool_rows;
+    if(Array.isArray(tr))tr.forEach(r=>{
+      if(!r||typeof r!=='object')return;
+      m[String(r.pool==null?'':r.pool)+'|'+String(r.model==null?'':r.model)]=finite(r.served);
+    });
+    return m;
+  })();
+  const poolMainRow=(rank,p,model,att,won,s4,s5,okr,cd,tasksObj,attToday,dailyCap,key,configured,wonToday)=>{
+     att=finite(att);won=finite(won);s4=finite(s4);s5=finite(s5);cd=finite(cd);wonToday=finite(wonToday);
+     const share=totalServed?100*won/totalServed:0;
+     const isOpen=openPools.has(key);
+     let status;
+     if(cd) status=`<span style="color:var(--warn)">⏳ cooling ${cd}s</span>`;
+     else if(won>0) status=`<span style="color:var(--ok)">● active</span>`;
+     else if(att>0) status=`<span style="color:var(--bad)">failing</span>`;
+     // A hop with no activity in THIS run but wins earlier today is "ready", not unproven —
+     // say so, so a post-restart table does not read as though the chain has never worked.
+     else if(configured&&wonToday>0) status=`<span class="muted">ready · served today</span>`;
+     else if(configured) status=`<span class="muted">ready</span>`;
+     else status=`<span class="muted">–</span>`;
+     const tasks=Object.entries(tasksObj||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span class="chip">${esc(t)} ${fmt(n)}</span>`).join('');
+     const okrCol=okr==null?'var(--dim)':okr>=90?'var(--ok)':okr>=50?'var(--warn)':'var(--bad)';
+     const [pp,mm]=key.split('|');
+     return `<tr data-pool="${esc(pp)}" data-model="${esc(mm||'')}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}">
+       <td class="num muted">${esc(rank)}</td>
+       <td><span class="caret${isOpen?' open':''}">▶</span> <span class="legsw" style="background:${poolColor(p)}"></span> <b>${esc(p)}</b></td>
+       <td class="muted" style="max-width:230px;overflow:hidden;text-overflow:ellipsis"><span title="${esc(model)}">${esc(model)||'–'}</span></td>
+       <td class="num">${fmt(att)}</td>
+       <td class="num">${fmt(won)}</td>
+       <td class="num"${wonToday>0?'':' style="color:var(--dim)"'}>${fmt(wonToday)}</td>
+       <td class="num"><span class="bar" style="width:54px"><i style="width:${share}%;background:${poolColor(p)}"></i></span> <span class="muted mono">${share.toFixed(0)}%</span></td>
+       <td class="num" style="color:${okrCol}">${okr==null?'–':okr.toFixed(0)+'%'}</td>
+       <td class="num">${s4?('<span style="color:var(--warn)">'+fmt(s4)+'</span>'):'0'}</td>
+       <td class="num">${s5?('<span style="color:var(--bad)">'+fmt(s5)+'</span>'):'0'}</td>
+       <td>${quotaCell(attToday,dailyCap)}</td>
+       <td>${tasks||'<span class="muted">–</span>'}</td>
+       <td>${status}</td></tr>`;
+  };
+  if(prows){
+    $('cloudTable').innerHTML = prows.map((r)=>{
+       const p=String(r.pool||''), model=String(r.model||''), att=finite(r.attempts), won=finite(r.served);
+       const okr=att?100*(finite(r['2xx'])/att):null;
+       // cooldown: the per-hop field when the router provides it, else stats.cloud_cooldown, whose
+       // keys are either "server|model" (per-hop) or a bare "server" (server-wide deadline).
+       const cd=firstNum(r.cooldown_s,cooldown[p+'|'+model],cooldown[p]);
+       const configured=hs[p]==='cloud';
+       const key=p+'|'+model, rank=(r.rank!=null)?r.rank:'–';
+       const row=poolMainRow(rank,p,model,att,won,finite(r['4xx']),finite(r['5xx']),okr,cd,r.tasks,
+                             r.attempts_today,r.daily_cap,key,configured,todayWins[key]);
+       const detailRow=openPools.has(key)?poolDetailRow(p,r,cd):'';
+       return row+detailRow;
+    }).join('') || '<tr><td class="muted" colspan="13">no cloud pools configured</td></tr>';
+  } else {
+    // legacy fallback: per-pool (bare name) rows, no per-model split / quota (older router)
+    $('cloudTable').innerHTML = order.map((p)=>{
+       const s=pools[p]||{}, att=finite(s.attempts), won=finite(s.served);
+       const rank=chain.includes(p)?(chain.indexOf(p)+1):'–';
+       const okr=att?100*(finite(s['2xx'])/att):null;
+       const configured=hs[p]==='cloud';
+       const model=chainModel[p]||topModel(s), key=p+'|';
+       const cd=firstNum(cooldown[p+'|'+model],cooldown[p]);   // per-hop key first, then server-wide
+       // legacy shape has no per-model split, so today's wins can only be matched on the bare
+       // pool name; todayWins is keyed "pool|model" and this key is "pool|" — a miss yields 0,
+       // which is correct here (unknown, not zero-and-claimed).
+       const row=poolMainRow(rank,p,model,att,won,finite(s['4xx']),finite(s['5xx']),okr,cd,s.tasks,
+                             null,null,key,configured,todayWins[key]);
+       const detailRow=openPools.has(key)?poolDetailRow(p,s,cd):'';
+       return row+detailRow;
+    }).join('') || '<tr><td class="muted" colspan="13">no cloud pools configured</td></tr>';
+  }
+}
+
+function prowsCount(stats){
+  return Array.isArray(stats&&stats.pool_rows)?stats.pool_rows.length:
+    (Array.isArray(stats&&stats.cloud_chain)?stats.cloud_chain.length:0);
+}
+
+// Daily-quota meter: inline bar + "today/cap"; green <60%, amber 60-90%, red >90%. Uncapped = '–'.
+function quotaCell(today,cap){
+  if(cap==null || !(+cap>0)) return '<span class="muted">–</span>';
+  const t=+today||0, c=+cap, pct=Math.min(100,100*t/c);
+  const col = pct>90?'var(--bad)':pct>=60?'var(--warn)':'var(--ok)';
+  return `<span class="bar" style="width:54px"><i style="width:${pct}%;background:${col}"></i></span> `+
+         `<span class="muted mono">${fmt(t)}/${fmt(c)}</span>`;
+}
+
+function poolDetailRow(p,s,cd){
+  const list=(obj)=>Object.entries(obj||{}).sort((a,b)=>b[1]-a[1]);
+  const callersL=list(s.callers), tasksL=list(s.tasks), modelsL=list(s.models);
+  const mk=(rows,emptyTxt)=> rows.length
+     ? rows.map(([k,n])=>`<div class="dd-row"><span>${esc(k)}</span><span class="mono">${fmt(n)}</span></div>`).join('')
+     : `<div class="muted" style="font-size:12px">${emptyTxt}</div>`;
+  const att=s.attempts||0, won=s.served||0;
+  const s2=s['2xx']||0,s4=s['4xx']||0,s5=s['5xx']||0,so=s.other||0;
+  const meta=`<div class="dd-row"><span>Attempts (run)</span><span class="mono">${fmt(att)}</span></div>
+    <div class="dd-row"><span>Wins (run)</span><span class="mono">${fmt(won)}</span></div>
+    <div class="dd-row"><span>2xx</span><span class="mono" style="color:var(--ok)">${fmt(s2)}</span></div>
+    <div class="dd-row"><span>4xx / 429</span><span class="mono" style="color:var(--warn)">${fmt(s4)}</span></div>
+    <div class="dd-row"><span>5xx</span><span class="mono" style="color:var(--bad)">${fmt(s5)}</span></div>
+    ${so?`<div class="dd-row"><span>other</span><span class="mono">${fmt(so)}</span></div>`:''}
+    ${cd?`<div class="dd-row"><span>Cooldown</span><span class="mono" style="color:var(--warn)">${cd}s</span></div>`:''}`;
+  return `<tr class="detail"><td colspan="13"><div class="dd-grid">
+      <div><div class="dd-h">Callers — where the calls come from</div>${mk(callersL,'no attributed callers yet')}</div>
+      <div><div class="dd-h">Tasks</div>${mk(tasksL,'no task data')}</div>
+      <div><div class="dd-h">Models</div>${mk(modelsL,'no model data')}</div>
+      <div><div class="dd-h">Attempts · wins · status</div>${meta}</div>
+    </div></td></tr>`;
+}
+
+function togglePoolRow(tr){
+  if(!tr) return;
+  const key=tr.getAttribute('data-pool')+'|'+(tr.getAttribute('data-model')||'');
+  if(openPools.has(key)) openPools.delete(key); else openPools.add(key);
+  renderCloud(lastStats,lastHealth);
+}
+
+// event delegation on the tbody (no inline onclick); toggles open-set + re-renders cached data
+$('cloudTable').addEventListener('click',e=>togglePoolRow(e.target.closest('tr[data-pool]')));
+$('cloudTable').addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  const tr=e.target.closest('tr[data-pool]');if(!tr)return;e.preventDefault();togglePoolRow(tr);
+});
+
+// clicking a Cloud-share entry drills into its parent HOP row in the pools table (shared open-set)
+function toggleShareRow(el){
+  if(!el) return;
+  const key=el.getAttribute('data-rowkey');
+  if(openPools.has(key)) openPools.delete(key); else openPools.add(key);
+  renderCloud(lastStats,lastHealth);
+  if(PHONE)$('poolDetails').open=true;
+}
+$('cloudShare').addEventListener('click',e=>toggleShareRow(e.target.closest('[data-rowkey]')));
+$('cloudShare').addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  const el=e.target.closest('[data-rowkey]');if(!el)return;e.preventDefault();toggleShareRow(el);
+});
+
+// ---------- 3) Cloud calls per hour ----------
+function renderHourly(stats){
+  const traffic=todayTraffic(stats);
+  const persistent=!!traffic;
+  const hours=traffic&&Array.isArray(traffic.pool_hourly)
+    ? traffic.pool_hourly : (Array.isArray(stats.pool_hourly)?stats.pool_hourly:[]);
+  const legendEl=$('hourLegend'), chartEl=$('hourChart'), noteEl=$('hourNote');
+  if(!hours.length){
+    legendEl.innerHTML='';
+    chartEl.className='';   // clear .hchart so the empty box doesn't keep its 150px height after a restart
+    chartEl.innerHTML='';
+    noteEl.innerHTML=persistent
+      ? '<span class="muted">No cloud calls recorded today yet. Daily history survives router restarts.</span>'
+      : '<span class="muted">No cloud calls recorded in the current router run yet.</span>';
+    return;
+  }
+  // collect pools present across all buckets, ordered by total wins desc
+  const totalsByPool={};
+  hours.forEach(h=>{ for(const[p,w]of Object.entries(h.pools||{})) totalsByPool[p]=finite(totalsByPool[p])+finite(w); });
+  const poolsOrdered=Object.keys(totalsByPool).sort((a,b)=>totalsByPool[b]-totalsByPool[a]);
+  const maxTot=Math.max(1,...hours.map(h=>Object.values(h.pools||{}).reduce((a,w)=>a+finite(w),0)));
+
+  // legend (shared colours)
+  legendEl.innerHTML=poolsOrdered.map(p=>
+    `<span class="legi"><span class="legsw" style="background:${poolColor(p)}"></span>${esc(p)}</span>`
+  ).join('') || '<span class="muted">no wins recorded in these buckets yet</span>';
+
+  chartEl.className='hchart';
+  chartEl.innerHTML=hours.map(h=>{
+    const winTot=Object.values(h.pools||{}).reduce((a,w)=>a+finite(w),0);
+    const barPct=maxTot>0?(100*winTot/maxTot):0; // guard divide-by-zero
+    // hour label: "YYYY-MM-DDTHH" is UTC — convert to local HH for the axis
+    const hh=localHH(h.hour);
+    let segs='';
+    if(winTot>0){
+      segs=poolsOrdered.map(p=>{
+        const w=finite((h.pools||{})[p]);
+        if(!w) return '';
+        const segPct=100*w/winTot; // share of this bar
+        return `<i style="height:${segPct}%;background:${poolColor(p)}" title="${esc(p)}: ${fmt(w)} wins @ ${esc(hh)}"></i>`;
+      }).join('');
+    }
+    const stack = winTot>0
+      ? `<div class="hstack" style="height:${barPct}%">${segs}</div>`
+      : `<div class="hstack empty" title="no wins this hour"></div>`;
+    return `<div class="hcol" title="${esc(hh)} · ${fmt(winTot)} wins">
+        <div class="htot">${winTot>0?fmt(winTot):''}</div>${stack}
+        <div class="hx">${esc(hh)}</div></div>`;
+  }).join('');
+  noteEl.innerHTML=persistent
+    ? '<span class="muted">bars = wins today per hour, segmented by pool · x-axis = <b>local</b> hour (HH) · persisted across router restarts</span>'
+    : '<span class="muted">bars = wins in the current run per hour, segmented by pool · x-axis = <b>local</b> hour (HH) · resets on router restart</span>';
+}
+
+// "YYYY-MM-DDTHH" (UTC) -> local two-digit hour string
+function localHH(key){
+  if(typeof key!=='string') return '–';
+  const mo=/^(\d{4})-(\d{2})-(\d{2})T(\d{2})/.exec(key);
+  if(!mo) return esc(key.slice(-2));
+  const d=new Date(Date.UTC(+mo[1],+mo[2]-1,+mo[3],+mo[4],0,0));
+  return String(d.getHours()).padStart(2,'0');
+}
+
+// ---------- 4) Capacity: local nodes + queue-wait ----------
+function renderNodes(servers,m){
+  const localServers=Object.entries(servers||{}).filter(([url])=>
+    !/^https:\/\//i.test(url) && !isHiddenBatchNode(url));
+  $('nodes').innerHTML=localServers.map(([url,raw])=>{
+    const s=(raw&&typeof raw==='object')?raw:{};
+    const q=finite(s.queued),a=finite(s.active),col=q>0?'var(--warn)':a>0?'var(--acc)':'var(--dim)';
+    const name=hostPortOf(url);
+    // NAME THE LAPTOP. A bare "127.0.0.1:21434" never told anyone which physical box is serving;
+    // on this deployment that endpoint is MAIN's ollama reached over the SSH reverse tunnel while
+    // plain :11434 is LEVITIN's own. See nodeHostOf() for how the layout is detected.
+    const id=nodeHostOf(url,servers), lap=id.host?laptopOf(id.host,m):null;
+    const heading=lap?`${esc(lap.host)} <span class="muted">· ${esc(lap.model)}</span>`:esc(name);
+    const spec=lap?laptopSpec(id.host,m):'';
+    const batch=BATCH_PORTS[id.port]?' · batch instance':'';
+    const endpointNote=lap
+      ? `<span class="muted" style="font-size:11px">${esc(name)}${id.why?' — '+esc(id.why):''}${batch}</span>`
+      : '<span class="muted" style="font-size:11px">endpoint not mapped to a known host</span>';
+    const servedRun=finite(s.served), hasToday=s.served_today!=null, servedToday=finite(s.served_today);
+    const servedLabel=hasToday?`${fmt(servedToday)} today · ${fmt(servedRun)} run`:`${fmt(servedRun)} since restart`;
+    // run-scoped gate counters the router already publishes but nothing rendered until now
+    const to=finite(s.timeouts), pre=finite(s.preemptions);
+    const chips=[];
+    if(lap&&lap.gpu)chips.push(`<span class="chip" title="${esc(spec)}">${esc(lap.gpu)}</span>`);
+    if(s.last_model)chips.push(`<span class="chip" title="model most recently loaded on this node">last ${esc(s.last_model)}</span>`);
+    // A non-zero timeout / preemption count is the main local-serving failure signal on this page,
+    // so it gets its own alert chip (tint + border + weight, not just a colour) instead of reading
+    // exactly like the "0 timeouts" next to it.
+    chips.push(`<span class="chip${to?' alert alert-bad':''}" title="requests that timed out on this node since the router restarted">${fmt(to)} timeouts</span>`);
+    chips.push(`<span class="chip${pre?' alert alert-warn':''}" title="jobs preempted to free the GPU for interactive traffic since the router restarted">${fmt(pre)} preempted</span>`);
+    const waiters=Array.isArray(s.queue)?s.queue:[];
+    waiters.slice(0,3).forEach(w=>{
+      const wr=(w&&typeof w==='object')?w:{};
+      chips.push(`<span class="chip alert alert-warn" title="waiting for a slot on this node">⏳ ${esc(wr.model||'?')} · ${esc(wr.caller||'-')} · ${esc(fmtMs(finite(wr.waited_s)*1000))}</span>`);
+    });
+    if(waiters.length>3)chips.push(`<span class="chip">+${waiters.length-3} more waiting</span>`);
+    return `<div class="kv"${spec?` title="${esc(spec)}"`:''}><span><b>${heading}</b> <span class="muted">${esc((s.active_models||[]).join(', ')||s.last_model||'idle')}</span>
+      <span class="node-meta">${endpointNote}<br>${chips.join('')}</span></span>
+      <span class="flex gap6"><span class="pill" style="color:${col};background:var(--neutral-bg)">${a} active · ${q} queued</span>
+      <span class="muted" style="min-width:120px;text-align:right">${servedLabel}</span></span></div>`;
+  }).join('') || '<div class="muted">no node data</div>';
+}
+function renderQueueStats(traffic){
+  const q=(traffic&&traffic.queue&&typeof traffic.queue==='object')?traffic.queue:null;
+  const w=firstNum(q&&q.waited_pct), a=firstNum(q&&q.avg_wait_ms), p=firstNum(q&&q.p95_wait_ms);
+  if(w==null&&a==null&&p==null){
+    $('queueStats').innerHTML=mutedLine('Queue-wait stats '+NEEDS_RESTART+'.');
+    return;
+  }
+  const wPct=(w!=null&&w<=1)?w*100:w;   // accept a fraction or an already-scaled percentage
+  $('queueStats').innerHTML=`<span class="muted">waited for a slot</span> <b class="mono" style="color:${
+      wPct==null?'var(--dim)':wPct>=25?'var(--warn)':'var(--ok)'}">${pctTxt(wPct)}</b>`
+    +` <span class="muted">· avg wait</span> <b class="mono" style="color:${msColor(a,'typ')}">${esc(fmtMs(a))}</b>`
+    +` <span class="muted">· p95 wait</span> <b class="mono" style="color:${msColor(p,'tail')}">${esc(fmtMs(p))}</b>`;
+}
+
+// ---------- 5) Latency (KPI card) ----------
+function renderLatency(traffic){
+  const summary=(traffic&&traffic.summary)||null;
+  const lat=(traffic&&traffic.latency&&typeof traffic.latency==='object')?traffic.latency:null;
+  const g=(lat&&lat.global&&typeof lat.global==='object')?lat.global:lat;   // tolerate a flat block
+  const avg=firstNum(g&&g.avg,g&&g.avg_ms,summary&&summary.avg_ms);
+  const p50=firstNum(g&&g.p50,g&&g.p50_ms);
+  const p90=firstNum(g&&g.p90,g&&g.p90_ms);
+  const p95=firstNum(g&&g.p95,g&&g.p95_ms,summary&&summary.p95_ms);
+  const p99=firstNum(g&&g.p99,g&&g.p99_ms);
+  const mx=firstNum(g&&g.max,g&&g.max_ms);
+  const n=firstNum(g&&g.n,g&&g.count,summary&&summary.requests);
+  $('latAvg').textContent=fmtMs(avg);
+  $('latAvg').style.color=msColor(avg,'typ');
+  $('latAvgNote').textContent = avg==null
+    ? 'no measured calls yet'
+    : 'average end-to-end · '+(n==null?'–':fmt(n))+' calls';
+  const tiles=[['p50',p50,'typ'],['p90',p90,'typ'],['p95',p95,'tail'],['p99',p99,'tail'],['max',mx,'tail']];
+  $('latTiles').innerHTML=tiles.map(t=>
+    `<div class="gstat"><b style="color:${msColor(t[1],t[2])}">${esc(fmtMs(t[1]))}</b><span>${esc(t[0])}</span></div>`).join('');
+  const missing=tiles.filter(t=>t[1]==null).map(t=>t[0]);
+  $('latNote').textContent = !traffic
+    ? 'this router build keeps no persistent call history, so latency cannot be computed'
+    : !lat
+      ? 'avg + p95 come from today’s call history · '+missing.join(' / ')+' '+NEEDS_RESTART
+      : missing.length
+        ? missing.join(' / ')+' not reported by the router'
+        : 'percentiles across every completed call today';
+}
+
+// ---------- 6) Status codes ----------
+function statusColor(st){
+  const s=String(st==null?'':st);
+  return s.charAt(0)==='2'?'var(--ok)':s.charAt(0)==='3'?'var(--acc)':
+         s.charAt(0)==='4'?'var(--warn)':s.charAt(0)==='5'?'var(--bad)':'var(--dim)';
+}
+function renderStatusCodes(traffic,agg){
+  const summary=(traffic&&traffic.summary)||null;
+  const codes=toKeyRows(summary&&summary.status_codes,'status','count');
+  const el=$('statusCodes'), note=$('statusNote');
+  const pill=(label,n,col,tip)=>`<span class="pill" style="background:var(--neutral-bg);color:${col}" title="${esc(tip)}">${esc(label)} <b class="mono">${fmt(n)}</b></span>`;
+  if(codes.length){
+    el.innerHTML=codes.map(r=>pill(r.key,r.n,statusColor(r.key),'HTTP '+r.key+' responses today')).join('');
+    note.textContent='exact HTTP status codes returned to callers today';
+    return;
+  }
+  const tot=finite(agg&&agg.tot);
+  if(!tot){
+    el.innerHTML=mutedLine('no calls recorded yet today');
+    note.textContent='';
+    return;
+  }
+  el.innerHTML=[['2xx',finite(agg.o2),'var(--ok)'],['4xx',finite(agg.e4),'var(--warn)'],
+                ['5xx',finite(agg.e5),'var(--bad)'],['other',finite(agg.other),'var(--dim)']]
+    .filter(r=>r[1]>0).map(r=>pill(r[0],r[1],r[2],r[0]+' responses today')).join('')
+    || mutedLine('no status data');
+  note.textContent='status classes · the per-code breakdown '+NEEDS_RESTART;
+}
+
+// ---------- 7) Tokens / throughput ----------
+function renderTokens(traffic){
+  const summary=(traffic&&traffic.summary)||null;
+  const tk=(traffic&&traffic.tokens&&typeof traffic.tokens==='object')?traffic.tokens:null;
+  const tin=firstNum(summary&&summary.tokens_in,tk&&tk.tokens_in);
+  const tout=firstNum(summary&&summary.tokens_out,tk&&tk.tokens_out);
+  const tps=firstNum(summary&&summary.tok_per_s,tk&&tk.tok_per_s);
+  const cov=firstNum(summary&&summary.token_coverage,tk&&tk.token_coverage);
+  const covPct=cov==null?null:(cov<=1?cov*100:cov);
+  const cin=firstNum(summary&&summary.chars_in), cout=firstNum(summary&&summary.chars_out);
+  $('tokTps').textContent = tps==null?'–':(tps>=100?fmt(Math.round(tps)):tps.toFixed(1));
+  $('tokTps').style.color = tps==null?'var(--dim)':'var(--fg)';
+  $('tokSub').textContent = tps==null?'tokens per second — not reported':'output tokens per second while generating';
+  const rows=[];
+  if(tin!=null)rows.push(kvRow('Tokens in',`<b class="mono">${fmt(Math.round(tin))}</b>`,'prompt tokens today'));
+  if(tout!=null)rows.push(kvRow('Tokens out',`<b class="mono">${fmt(Math.round(tout))}</b>`,'generated tokens today'));
+  if(tin!=null&&tout!=null)rows.push(kvRow('Total',`<span class="mono">${fmt(Math.round(tin+tout))}</span>`));
+  if(cin!=null||cout!=null)rows.push(kvRow('Chars in / out',
+    `<span class="mono">${cin==null?'–':fmt(Math.round(cin))} / ${cout==null?'–':fmt(Math.round(cout))}</span>`,
+    'character counts exist even for providers that report no token usage'));
+  const dim=(Array.isArray(tk&&tk.by_pool)&&tk.by_pool.length)?'pool'
+           :((Array.isArray(tk&&tk.by_task)&&tk.by_task.length)?'task':null);
+  let split='';
+  if(dim){
+    const list=tk['by_'+dim].map(raw=>{
+      const r=(raw&&typeof raw==='object')?raw:{};
+      return {key:String(r.key==null?'-':r.key),n:finite(r.n),tin:firstNum(r.tokens_in),
+              tout:firstNum(r.tokens_out),tps:firstNum(r.tok_per_s),avg:firstNum(r.avg_out)};
+    }).sort((a,b)=>finite(b.tout)-finite(a.tout));
+    const max=Math.max(1,...list.map(r=>finite(r.tout)));
+    split=`<div class="dd-h" style="margin-top:10px">Output tokens by ${esc(dim)}</div>`
+      +list.slice(0,5).map(r=>`<div class="kv" title="${esc(r.key)} · ${fmt(r.n)} calls${
+          r.tps!=null?' · '+r.tps.toFixed(1)+' tok/s':''}${r.avg!=null?' · avg '+fmt(Math.round(r.avg))+' out':''}">
+        <span><span class="legsw" style="background:${poolColor(r.key)}"></span> ${esc(dim==='pool'?providerName(r.key):r.key)}</span>
+        <span class="flex gap6"><span class="bar" style="width:70px"><i style="width:${100*finite(r.tout)/max}%;background:${poolColor(r.key)}"></i></span>
+        <span class="muted mono">${r.tout==null?'–':fmt(Math.round(r.tout))}</span></span></div>`).join('')
+      +(list.length>5?`<div class="kv"><span class="muted">+${list.length-5} more</span><span></span></div>`:'');
+  }
+  if(!rows.length&&!split){
+    $('tokens').innerHTML=mutedLine(traffic
+      ? 'Token accounting '+NEEDS_RESTART+'.'
+      : 'Token accounting needs today’s call history.');
+    $('tokNote').textContent='';
+    return;
+  }
+  $('tokens').innerHTML=rows.join('')+split;
+  $('tokNote').textContent = (covPct!=null&&covPct<99.5)
+    ? 'covers '+covPct.toFixed(0)+'% of today’s calls — providers that report no usage are excluded'
+    : (covPct!=null?'usage reported for every call today':'');
+}
+
+// ---------- 8) Fallback depth (hops) ----------
+function renderHops(traffic){
+  const hp=(traffic&&traffic.hops&&typeof traffic.hops==='object')?traffic.hops:null;
+  const first=firstNum(hp&&hp.first_try_pct), avgHop=firstNum(hp&&hp.avg_hop), cov=firstNum(hp&&hp.coverage);
+  const dist=toKeyRows(hp&&hp.distribution,'hop','count');
+  if(!hp||(first==null&&avgHop==null&&!dist.length)){
+    $('hopFirst').textContent='–';
+    $('hopFirst').style.color='var(--dim)';
+    $('hopSub').textContent='won on the first hop — not reported';
+    // DERIVED, never hardcoded. This one literal said 22 while the chain was 19, and the same
+    // quantity is stated as 17, 18, 22 and 25 in four places across this repo — every one of them
+    // written correctly and then left behind by a chain that kept changing. The feed already
+    // carries the answer, so ask it instead of restating it.
+    const chainLen=(Array.isArray(stats&&stats.cloud_chain)?stats.cloud_chain.length:0);
+    $('hops').innerHTML=mutedLine('Fallback-depth tracking '+NEEDS_RESTART
+      +(chainLen?'. On a '+chainLen+'-hop chain this is the fastest single health signal.'
+                :'. On a chain this deep it is the fastest single health signal.'));
+    $('hopNote').textContent='';
+    return;
+  }
+  const firstPct=(first!=null&&first<=1)?first*100:first;
+  $('hopFirst').textContent=pctTxt(firstPct);
+  $('hopFirst').style.color=firstPct==null?'var(--dim)':firstPct>=90?'var(--ok)':firstPct>=70?'var(--warn)':'var(--bad)';
+  $('hopSub').textContent='won on the first hop'+(avgHop==null?'':' · avg depth '+avgHop.toFixed(2)+' hops');
+  const rows=dist.slice().sort((a,b)=>finite(a.key)-finite(b.key));   // hop order, not count order
+  const total=rows.reduce((a,r)=>a+r.n,0)||1, max=Math.max(1,...rows.map(r=>r.n));
+  const hopCol=h=>h<=1?'var(--ok)':h<=3?'var(--acc)':h<=6?'var(--warn)':'var(--bad)';
+  $('hops').innerHTML = rows.length ? rows.map(r=>
+    `<div class="kv" title="won on hop ${esc(r.key)} of the fallback chain"><span>hop <b class="mono">${esc(r.key)}</b></span>
+      <span class="flex gap6"><span class="bar" style="width:90px"><i style="width:${100*r.n/max}%;background:${hopCol(finite(r.key))}"></i></span>
+      <span class="muted mono" style="min-width:74px;text-align:right">${fmt(r.n)} · ${(100*r.n/total).toFixed(0)}%</span></span></div>`
+  ).join('') : mutedLine('no hop distribution recorded yet');
+  const covPct=cov==null?null:(cov<=1?cov*100:cov);
+  $('hopNote').textContent = (covPct!=null&&covPct<99.5)
+    ? 'hop depth known for '+covPct.toFixed(0)+'% of today’s calls'
+    : 'hop 1 = the first candidate in the chain (local node or the top free pool)';
+}
+
+// ---------- 9) Cost: call history vs budget accounting ----------
+function renderCost(stats){
+  const traffic=todayTraffic(stats), summary=traffic&&traffic.summary;
+  const cloud=(stats&&stats.cloud&&typeof stats.cloud==='object')?stats.cloud:{};
+  const actual=firstNum(summary&&summary.cost_usd);
+  const fromHist=firstNum(cloud.cost_today_from_history);
+  const spent=firstNum(cloud.spent_today_usd), budget=firstNum(cloud.daily_budget_usd);
+  const inflight=firstNum(cloud.inflight_est_usd);
+  const pct=(budget!=null&&budget>0&&spent!=null)?Math.min(100,100*spent/budget):null;
+  const barCol=pct==null?'var(--dim)':pct>=100?'var(--bad)':pct>=80?'var(--warn)':'var(--ok)';
+  const rows=[];
+  rows.push(kvRow('Actual — call history',actual==null?'<span class="muted">–</span>'
+      :`<b class="mono" style="color:${actual>0?'var(--fg)':'var(--ok)'}">${esc(fmtUsd(actual))}</b>`,
+    'sum of the per-call cost recorded in today’s history rows; local and free-pool calls are $0'));
+  if(fromHist!=null)rows.push(kvRow('Router’s history total',`<span class="mono">${esc(fmtUsd(fromHist))}</span>`,
+    'cost_today_from_history as computed by the router itself'));
+  rows.push(kvRow('Budget accounting',spent==null?'<span class="muted">–</span>':`<span class="mono">${esc(fmtUsd(spent))}</span>`,
+    'the in-memory counter that gates the daily budget'));
+  rows.push(kvRow('In-flight estimate',inflight==null?'<span class="muted">–</span>':`<span class="mono">${esc(fmtUsd(inflight))}</span>`,
+    'reserved for calls that have not reported a cost yet'));
+  rows.push(kvRow('Daily budget',(budget==null?'<span class="muted">–</span>':`<span class="mono">${esc(fmtUsd(budget))}</span>`)
+    +(cloud.paused?' <span class="pill" style="background:var(--bad-bg);color:var(--bad)">PAUSED</span>':'')));
+  if(pct!=null)rows.push(`<div class="kv"><span class="muted">Budget used</span><span class="flex gap6">
+      <span class="bar" style="width:90px"><i style="width:${pct}%;background:${barCol}"></i></span>
+      <span class="mono" style="color:${barCol}">${pct.toFixed(pct<10?1:0)}%</span></span></div>`);
+  $('cost').innerHTML=rows.join('');
+  const cmp=[];
+  if(actual!=null&&spent!=null&&Math.abs(actual-spent)>0.01)
+    cmp.push('budget accounting differs from the call history by '+fmtUsd(Math.abs(actual-spent))
+      +' — the counter resets with the router, the history does not');
+  if(actual!=null&&fromHist!=null&&Math.abs(actual-fromHist)>0.01)
+    cmp.push('the router’s own history total differs by '+fmtUsd(Math.abs(actual-fromHist)));
+  $('costNote').textContent = cmp.length?('⚠ '+cmp.join(' · '))
+    :(actual==null?'per-call cost needs today’s call history':'history and budget accounting agree within a cent');
+  $('costNote').style.color = cmp.length?'var(--warn)':'';
+}
+
+// ---------- 10) Runtime, flags, history retention, feed pipeline ----------
+function runtimeBadges(rt,stats){
+  const chips=[`<span class="chip" title="time since the router process started">up ${esc(humanDur(uptimeSecs(stats,rt)))}</span>`];
+  if(rt){
+    if(rt.local_gpu_only)chips.push('<span class="chip" style="color:var(--local)" title="local models are pinned to the GPU and never overflow into system RAM">GPU-only</span>');
+    if(rt.gaming_mode)chips.push('<span class="chip" style="color:var(--warn)" title="gaming mode: local GPU work is held back">gaming</span>');
+    if(rt.remote_mode)chips.push('<span class="chip" style="color:var(--acc)" title="remote mode: this router is reached through the tunnel">remote</span>');
+  }
+  return chips.join('');
+}
+function runtimeFlagChips(rt){
+  const chip=(on,label,onCol,tip)=>`<span class="chip" style="color:${on?onCol:'var(--dim)'}" title="${esc(tip)}">${esc(label)} ${on?'on':'off'}</span>`;
+  const out=[];
+  if(rt.local_gpu_only!=null)out.push(chip(!!rt.local_gpu_only,'GPU-only','var(--local)','local models are pinned to the GPU and never overflow into system RAM'));
+  if(rt.gaming_mode!=null)out.push(chip(!!rt.gaming_mode,'gaming','var(--warn)','gaming mode: local GPU work is held back'));
+  if(rt.remote_mode!=null)out.push(chip(!!rt.remote_mode,'remote','var(--acc)','remote mode: this router is reached through the tunnel'));
+  return out.length?out.join(''):'<span class="muted">no flags reported</span>';
+}
+function renderRuntime(stats,rt,health){
+  const traffic=todayTraffic(stats);
+  const session=(stats&&stats.session&&typeof stats.session==='object')?stats.session:{};
+  const started=epochOf(session.started_at);
+  const arch=(traffic&&traffic.archive&&typeof traffic.archive==='object')?traffic.archive:null;
+  const rows=[];
+  rows.push(kvRow('Uptime',`<b class="mono">${esc(humanDur(uptimeSecs(stats,rt)))}</b>`
+    +(started==null?'':` <span class="muted">since ${esc(fmtClock(started))}</span>`),
+    'time since the router process started'));
+  rows.push(kvRow('Requests since restart',`<span class="mono">${fmt(finite(session.requests))}</span>`
+    +(session.completed==null?'':` <span class="muted">· ${fmt(finite(session.completed))} completed</span>`),
+    'run-scoped counters; the "today" figures above survive restarts'));
+  // host/pid come from the runtime block; the port also exists on /health, so fall back to that
+  const port=firstNum(rt&&rt.port,health&&health.port), pid=firstNum(rt&&rt.pid);
+  const host=(rt&&rt.host)?String(rt.host):'';
+  const listen=host?(esc(host)+':'+(port==null?'?':port)):(port==null?null:'port '+port);
+  rows.push(kvRow('Listening',listen==null?'<span class="muted">'+esc(NEEDS_RESTART)+'</span>'
+      :`<span class="mono">${listen}</span>`+(pid==null?'':` <span class="muted">pid ${pid}</span>`),
+    'the host and port the router process reports for itself'));
+  if(port!=null&&port!==11435)
+    rows.push(kvRow('Client endpoint','<span class="muted mono">:11435 (published)</span>',
+      'the router reporting a different listen port is a deployment detail, not a fault'));
+  rows.push(kvRow('Flags',rt?runtimeFlagChips(rt):'<span class="muted">'+esc(NEEDS_RESTART)+'</span>'));
+  if(arch){
+    const kept=firstNum(arch.retained), lim=firstNum(arch.retention_limit), life=firstNum(arch.lifetime);
+    const rpct=(kept!=null&&lim!=null&&lim>0)?Math.min(100,100*kept/lim):null;
+    const rcol=rpct==null?'var(--dim)':rpct>=90?'var(--warn)':'var(--ok)';
+    rows.push(`<div class="kv" title="rolling call history in the local SQLite DB; the oldest rows are trimmed once the limit is reached">
+      <span class="muted">History retained</span><span class="flex gap6">
+      <span class="bar" style="width:80px"><i style="width:${rpct==null?0:rpct}%;background:${rcol}"></i></span>
+      <span class="mono" style="color:${rcol}">${kept==null?'–':fmt(kept)}${lim==null?'':' / '+fmt(lim)}${
+        rpct==null?'':' · '+rpct.toFixed(0)+'%'}</span></span></div>`);
+    if(life!=null)rows.push(kvRow('Calls ever recorded',`<span class="mono">${fmt(life)}</span>`,
+      'lifetime rows inserted, including trimmed ones'));
+  }
+  const dbBytes=firstNum(rt&&rt.history_db_bytes);
+  if(dbBytes!=null)rows.push(kvRow('History DB size',`<span class="mono">${esc(humanBytes(dbBytes))}</span>`));
+  $('runtime').innerHTML=rows.join('');
+  $('runtimeNote').textContent = arch
+    ? 'prompts and outputs never leave the local DB — only these aggregates are pushed to the cloud'
+    : 'history retention '+NEEDS_RESTART;
+}
+// metrics.feed (optional): tells "the FEED is stale" apart from "the ROUTER is down"
+function renderFeed(m,stale){
+  const f=(m&&m.feed&&typeof m.feed==='object')?m.feed:null;
+  const el=$('feed'), brief=$('feedBrief'), note=$('feedNote');
+  if(!f){
+    el.innerHTML=mutedLine('This pusher build does not report feed metadata.');
+    brief.textContent='not reported';
+    note.textContent=stale?'payload is stale — check the pusher daemon before suspecting the router':'feed metadata not reported';
+    note.style.color=stale?'var(--warn)':'';
+    return;
+  }
+  const fails=firstNum(f.consecutive_failures), bytes=firstNum(f.payload_bytes), iv=firstNum(f.interval_s);
+  // Two sizes, because the one this card used to print was the wrong one. payload_bytes is RAW
+  // JSON — the number the pusher's 300 KB shed ladder counts — but Supabase gzips the response, so
+  // a reader never downloads it: measured 2026-08-05, 217 KB raw arrived as 26.7 KB. Printing the
+  // raw figure alone overstated the real cost of this page by ~8x. The gz number leads; the raw one
+  // stays visible beside it because it is what the size limit is actually enforced against.
+  const gzBytes=firstNum(f.payload_bytes_gz);
+  const sizeTxt=(gzBytes!=null&&gzBytes>0)?humanBytes(gzBytes)+' on the wire':humanBytes(bytes);
+  const pushAge=ageOf(f.pusher_last_ok), lastMs=firstNum(f.last_push_ms), pStart=epochOf(f.pusher_started_at);
+  const wAge=ageOf(f.watchdog_last_ok);
+  const shed=Array.isArray(f.shed)?f.shed.filter(s=>s!=null&&s!==''):[];
+  const rows=[];
+  rows.push(kvRow('Pusher uptime',`<span class="mono">${esc(pStart==null?'–':humanDur(Math.max(0,Date.now()/1000-pStart)))}</span>`
+    +(iv==null?'':` <span class="muted">· every ${iv}s</span>`),'the daemon that copies /stats into Supabase'));
+  rows.push(kvRow('Last successful push',pushAge==null?'<span class="muted">–</span>'
+    :`<span class="mono" style="color:${pushAge>90?'var(--warn)':'var(--ok)'}">${esc(humanDur(pushAge))} ago</span> <span class="muted">${esc(fmtClock(f.pusher_last_ok))}</span>`));
+  if(lastMs!=null)rows.push(kvRow('Push duration',`<span class="mono">${esc(fmtMs(lastMs))}</span>`));
+  rows.push(kvRow('Payload size',(gzBytes!=null&&gzBytes>0)
+    ? `<span class="mono">${esc(humanBytes(gzBytes))}</span> <span class="muted">gzipped · ${esc(humanBytes(bytes))} raw</span>`
+    : `<span class="mono">${esc(humanBytes(bytes))}</span>`,
+    'what a browser actually downloads — Supabase serves this row gzipped. The raw JSON size beside it is what the 300 KB shed limit counts.'));
+  rows.push(kvRow('Consecutive failures',`<span class="mono" style="color:${
+    (fails!=null&&fails>0)?'var(--warn)':'var(--ok)'}">${fails==null?'–':fmt(fails)}</span>`));
+  if(f.router_url)rows.push(kvRow('Router endpoint',
+    `<span class="muted mono" style="overflow-wrap:anywhere">${esc(f.router_url)}</span>`,'the /stats endpoint the pusher polls'));
+  if(f.write_key_source)rows.push(kvRow('Write key',`<span class="muted">${esc(f.write_key_source)}</span>`));
+  if(f.legacy_public_writer)rows.push(kvRow('Writer',
+    '<span class="pill" style="background:var(--warn-bg);color:var(--warn)" title="the public anon key can still write this row — move to a restricted writer">legacy public writer</span>'));
+  if(wAge!=null||f.watchdog_last_ok!=null)rows.push(kvRow('Watchdog last ok',
+    `<span class="mono">${esc(wAge==null?fmtClock(f.watchdog_last_ok):humanDur(wAge)+' ago')}</span>`));
+  el.innerHTML=rows.join('')
+    +(shed.length?`<div class="sub" style="color:var(--warn)">⚠ payload over the size limit — dropped: ${esc(shed.join(', '))}</div>`:'');
+  brief.textContent=[sizeTxt,iv==null?'':'every '+iv+'s',(fails!=null&&fails>0)?fails+' failures':'']
+    .filter(Boolean).join(' · ')||'ok';
+  const bits=['pusher '+(pushAge==null?'–':humanDur(pushAge)+' ago'),sizeTxt];
+  if(fails!=null&&fails>0)bits.push(fmt(fails)+' consecutive push failures');
+  if(f.legacy_public_writer)bits.push('legacy public writer');
+  if(shed.length)bits.push('shed: '+shed.join(', '));
+  if(stale)bits.push('the FEED is stale — the router itself may be healthy');
+  note.textContent=bits.join(' · ');
+  note.style.color=(stale||(fails!=null&&fails>0)||shed.length)?'var(--warn)':'';
+}
+
+// ---------- 11) Sources: what actually served today ----------
+function renderSources(traffic,servers,m){
+  const el=$('sources'), note=$('sourcesNote');
+  const src=traffic&&traffic.sources;
+  let rows=[], derived=false;
+  if(Array.isArray(src)){
+    rows=src.map(raw=>{const s=(raw&&typeof raw==='object')?raw:{};
+      return {node:String(s.node==null?'-':s.node),pool:s.pool==null?'':String(s.pool),count:finite(s.count)};});
+  }else if(src&&typeof src==='object'){
+    rows=Object.entries(src).map(([k,v])=>({node:k,pool:'',count:finite(v)}));
+  }
+  if(!rows.length){
+    const nc=traffic&&traffic.node_counts;
+    if(nc&&typeof nc==='object'){derived=true;rows=Object.entries(nc).map(([k,v])=>({node:k,pool:'',count:finite(v)}));}
+  }
+  rows=rows.filter(r=>r.count>0).sort((a,b)=>b.count-a.count);
+  if(!rows.length){
+    el.innerHTML=mutedLine(traffic?'no completed calls recorded today yet':'the source breakdown needs today’s call history');
+    note.textContent='';
+    return;
+  }
+  const total=rows.reduce((a,r)=>a+r.count,0)||1, max=rows[0].count||1, CAP=10;
+  el.innerHTML=rows.slice(0,CAP).map(r=>{
+    const isCloud=r.node.toLowerCase()==='cloud';
+    const col=isCloud?poolColor(r.pool||'cloud'):'var(--local)';
+    // "new · local node" named neither the laptop nor the GPU that actually did the work. The
+    // router's node aliases map to physical boxes (NODE_ALIAS_HOST), so say which one.
+    const hostKey=isCloud?'':NODE_ALIAS_HOST[r.node.toLowerCase()];
+    const lap=hostKey?laptopOf(hostKey,m):null;
+    const label=isCloud?(r.pool?providerName(r.pool):'cloud'):(lap?lap.host+' · '+lap.model:r.node);
+    const sub=isCloud?'cloud'
+      :(lap?`local node “${esc(r.node)}” · ${esc(lap.gpu)}`:`local node “${esc(r.node)}”`);
+    const tip=isCloud?`${label} served ${fmt(r.count)} calls today`
+      :`${label} served ${fmt(r.count)} calls today${lap?' · '+laptopSpec(hostKey,m):''}`;
+    return `<div class="kv" title="${esc(tip)}">
+      <span><span class="legsw" style="background:${col}"></span> <b>${esc(label)}</b> <span class="muted">· ${sub}</span></span>
+      <span class="flex gap6"><span class="bar" style="width:90px"><i style="width:${100*r.count/max}%;background:${col}"></i></span>
+      <span class="muted mono" style="min-width:74px;text-align:right">${fmt(r.count)} · ${(100*r.count/total).toFixed(0)}%</span></span></div>`;
+  }).join('')+(rows.length>CAP
+    ? `<div class="kv"><span class="muted">+${rows.length-CAP} more</span><span class="muted mono">${
+        fmt(rows.slice(CAP).reduce((a,r)=>a+r.count,0))}</span></div>`
+    : '');
+  note.textContent=fmt(total)+' calls · '+rows.length+' source'+(rows.length===1?'':'s')
+    +(derived?' · derived from per-node counts (no pool split)':'');
+}
+
+// ---------- 12) Cooldowns ----------
+function renderCaptcha(m,stats){
+  // Two INDEPENDENT captcha systems, and the dashboard showed neither. The tile-pick lane is a
+  // vision model reading the challenge image (free hops); the token chain produces a real
+  // Turnstile/reCAPTCHA token, which no vision model can do, and every one of those hops is PAID
+  // per solve. 1,738 of 21,806 job-application records are blocked on captcha, so this is the
+  // only part of the stack with a per-unit cash cost and it was invisible.
+  const el=$('captchaBody'), note=$('captchaNote');
+  const c=(m&&m.captcha&&typeof m.captcha==='object')?m.captcha:null;
+  if(!c){ el.innerHTML=mutedLine('No captcha status in this payload.');
+          note.textContent='router /v1/captcha/status was unreachable when this was built'; return; }
+  const provs=Array.isArray(c.providers)?c.providers:[];
+  const armed=provs.filter(p=>p&&p.armed);
+  // Per-task figures live in traffic_today.tasks, which is a LIST of {task, requests, ok_pct,
+  // avg_ms, ...} -- NOT a stats.tasks map. The first version of this panel read stats.tasks, a key
+  // the router does not emit at any level, so the call count was silently always 0 and the panel
+  // looked correct while measuring nothing.
+  const tt=todayTraffic(stats), tlist=(tt&&Array.isArray(tt.tasks))?tt.tasks:[];
+  const lane=tlist.find(x=>x&&x.task==='captcha')||null;
+  const vlane=tlist.find(x=>x&&x.task==='vision')||null;
+  const laneCalls=lane?finite(lane.requests):0;
+  const visionCalls=vlane?finite(vlane.requests):0;
+  const rows=[];
+  const okTxt=lane&&lane.ok_pct!=null?` <span class="muted">· ${fmt(lane.ok_pct)}% ok</span>`:'';
+  rows.push(`<div class="kv"><span><b>Tile-pick lane</b> <span class="muted">· free vision hops</span></span>`
+    +`<span>${c.vl_tiles?'<span style="color:var(--ok)">enabled</span>':'<span style="color:var(--bad)">off</span>'}`
+    +(laneCalls?` <span class="muted">· ${fmt(laneCalls)} today</span>${okTxt}`:' <span class="muted">· no calls today</span>')
+    +`</span></div>`);
+  if(visionCalls&&!laneCalls){
+    rows.push(`<div class="kv"><span class="muted">captcha work is still going to the vision lane`
+      +`</span><span class="muted">${fmt(visionCalls)} vision calls</span></div>`);
+  }
+  rows.push(`<div class="kv"><span><b>Token solving</b> <span class="muted">· paid, per solve</span></span>`
+    +`<span>${c.proceed?'<span style="color:var(--ok)">ready</span>':'<span style="color:var(--bad)">blocked</span>'}</span></div>`);
+  provs.forEach(p=>{
+    const on=!!p.armed;
+    rows.push(`<div class="kv"><span><span class="legsw" style="background:${on?'var(--ok)':'var(--muted,#888)'}"></span> `
+      +`${esc(String(p.provider||'?'))}</span><span>`
+      +(on?'<b style="color:var(--ok)">armed</b>':'<span class="muted">no key</span>')
+      +(p.min_fund_usd!=null?` <span class="muted">· min $${esc(String(p.min_fund_usd))}</span>`:'')
+      +`</span></div>`);
+  });
+  el.innerHTML=rows.join('');
+  note.textContent = armed.length
+    ? (armed.map(p=>p.provider).join(', ')+' armed — token solves are billed per solve; check the balance at the provider')
+    : 'NO paid solver armed: Turnstile/reCAPTCHA tokens cannot be produced at all';
+}
+function renderCooldowns(stats){
+  const cd=(stats&&stats.cloud_cooldown&&typeof stats.cloud_cooldown==='object')?stats.cloud_cooldown:{};
+  const rows=Object.entries(cd).map(([k,v])=>{
+    const i=k.indexOf('|');
+    return {pool:i<0?k:k.slice(0,i),model:i<0?'':k.slice(i+1),s:finite(v)};
+  }).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);
+  const el=$('cooldowns'), note=$('cooldownNote'), CAP=10;
+  if(!rows.length){
+    el.innerHTML=mutedLine('No pool is cooling down — every hop in the chain is available.');
+    note.textContent='a hop cools off after a 429 or a 5xx so the router stops hammering it';
+    return;
+  }
+  el.innerHTML=rows.slice(0,CAP).map(r=>
+    `<div class="kv"><span><span class="legsw" style="background:${poolColor(r.pool)}"></span> <b>${esc(providerName(r.pool))}</b> `
+    +(r.model?`<span class="muted">· ${esc(r.model)}</span>`:'<span class="muted">· server-wide</span>')+`</span>
+      <span class="mono" style="color:var(--warn)">⏳ ${esc(fmtMs(r.s*1000))}</span></div>`).join('')
+    +(rows.length>CAP?`<div class="kv"><span class="muted">+${rows.length-CAP} more cooling</span><span></span></div>`:'');
+  note.textContent=rows.length+' hop'+(rows.length===1?'':'s')+' resting · they are skipped until the timer expires';
+}
+
+// ---------- 13) Quota headroom ----------
+// WHY THIS IS DERIVED FROM pool_rows AND NOT FROM stats.quota:
+// this card needs "which hops have a cap, and how much of it is left" — a per-hop headroom
+// table. stats.quota answers a narrower question: pools_capped is a COUNT OF SPENT HOPS
+// (router_server._quota_snapshot only increments it when today >= cap) and
+// pools_at_or_over_80pct lists just the hot ones. So on a healthy day the quota block is
+// {pools_capped: 0, pools_at_or_over_80pct: []} and rendering this card from it would print
+// "No daily caps are configured on this chain" above a Cloud pools table showing 17 caps.
+// The per-hop counters are therefore the source of truth here (they are the SAME field the
+// pools table renders, so the two cards cannot disagree).
+//
+// CORRECTED 2026-07-27: an earlier version of this comment claimed the router's quota block
+// was BUGGY on that evidence. It is not — 0 spent out of 17 capped is simply the healthy
+// state, and the two numbers were never meant to match. The warning built on that
+// misreading fired every day; it now compares spent-to-spent. Do not "fix" the router here.
+const QUOTA_HOT_PCT=80, QUOTA_LIST_CAP=10;
+// A pool that has ATTEMPTED repeatedly this run and served NOTHING is not "cooling", it is
+// unreachable — and its unspent quota is not headroom. Counting it as headroom is precisely the
+// mistake openrouter_paid_exhausted_2026_07_26_note was written about: the router reported ~$10
+// of budget while every paid hop was already returning 403, because a LOCAL counter was being
+// read as if it described the UPSTREAM account.
+//
+// Measured on 2026-08-05, which is why this exists: Google's project went billing-denied
+// ("Lightning dunning decision is deny", 403 on all four hops). The card went on advertising
+// 9,654 free requests left, of which 5,020 — 52% — sat on pools serving nothing. The honest
+// number was 4,634.
+//
+// THRESHOLD, and why it is not simply served===0: cloudflare had exactly ONE attempt and one 5xx
+// in the same snapshot. Condemning a pool on a single transient blip would be a worse lie than
+// the one being fixed, so a pool must have failed at least QUOTA_DOWN_MIN_ATTEMPTS times with no
+// success before its quota stops counting. Under-flagging is the safe direction here.
+//
+// This reads `pools`, which is per-RUN (it resets with the router), while the caps are per-DAY.
+// That mismatch is deliberate: "can this pool serve me right now" is a live question, and a
+// provider that recovers simply reappears in the total on the next push.
+const QUOTA_DOWN_MIN_ATTEMPTS=3;
+function unreachablePools(stats){
+  const down=new Set();
+  const pools=(stats&&stats.pools&&typeof stats.pools==='object')?stats.pools:{};
+  Object.keys(pools).forEach(name=>{
+    const p=(pools[name]&&typeof pools[name]==='object')?pools[name]:{};
+    if(finite(p.attempts)>=QUOTA_DOWN_MIN_ATTEMPTS&&finite(p.served)===0)down.add(name);
+  });
+  return down;
+}
+function quotaRowsOf(prows,down){
+  const rows=[];
+  const dead=(down instanceof Set)?down:new Set();
+  (prows||[]).forEach(raw=>{
+    const r=(raw&&typeof raw==='object')?raw:{};
+    const cap=firstNum(r.daily_cap);
+    if(cap==null||cap<=0)return;
+    const today=finite(r.attempts_today);
+    // Token totals are MEASURED ONLY (router 2026-08-01) and are absent on a hop that reported no
+    // usage today — firstNum() keeps that "not measured" distinct from a real zero.
+    rows.push({pool:String(r.pool==null?'':r.pool),model:String(r.model==null?'':r.model),
+               today,cap,pct:100*today/cap,down:dead.has(String(r.pool==null?'':r.pool)),
+               tin:firstNum(r.tokens_in_today),tout:firstNum(r.tokens_out_today),
+               ttot:firstNum(r.tokens_total_today)});
+  });
+  return rows.sort((a,b)=>b.pct-a.pct||b.cap-a.cap);
+}
+function quotaVisibleRows(rows,cap){
+  // Which capped hops the card actually lists. Unreachable ones are pinned in FIRST and are never
+  // truncated: they are the rows the headline just subtracted, so hiding them makes the list
+  // contradict the total above it. Everything else keeps its usage ranking and fills the rest of
+  // the cap. Pure, so it can be tested against the shipped page rather than a copy of it.
+  const list=Array.isArray(rows)?rows:[];
+  const down=list.filter(r=>r&&r.down);
+  const rest=list.filter(r=>!(r&&r.down));
+  return down.concat(rest.slice(0,Math.max(0,cap-down.length)));
+}
+function quotaRow(r,hot){
+  // The REQUEST meter alone can be confidently wrong: on 2026-08-01 groq|openai/gpt-oss-20b read
+  // 99/400 here while groq was already refusing it on tokens-per-day. So the row also states the
+  // tokens that hop has actually spent today, when the router measured any. It is a number, not a
+  // meter, because there is no token cap to draw it against — none is enforced anywhere.
+  const tok=isNum(r.ttot)
+    ? ` <span class="mono muted" style="min-width:52px;text-align:right" title="${
+        fmt(r.tin)} prompt + ${fmt(r.tout)} completion tokens today — measured only, no token cap is enforced"
+      >${fmtTok(r.ttot)} tok</span>`:'';
+  return `<div class="kv"${hot?' style="font-weight:600"':''} title="${esc(providerName(r.pool)+(r.model?' · '+r.model:''))} — ${fmt(r.today)} of ${fmt(r.cap)} attempts used today${
+      isNum(r.ttot)?` · ${fmt(r.ttot)} tokens today (${fmt(r.tin)} in / ${fmt(r.tout)} out), measured only`:''}">
+      <span><span class="legsw" style="background:${poolColor(r.pool)}"></span> <b>${esc(providerName(r.pool))}</b>`
+    +(r.model?` <span class="muted">· ${esc(r.model)}</span>`:'')+`</span>
+      <span class="flex gap6">${r.down?'<span class="chip" style="color:var(--bad);border-color:var(--bad)" title="this pool has served nothing this run despite repeated attempts — its remaining quota is excluded from the headline">unreachable</span> ':''}${quotaCell(r.today,r.cap)}
+      <span class="mono" style="min-width:46px;text-align:right;color:${
+        finite(r.pct)>=100?'var(--bad)':finite(r.pct)>=90?'var(--warn)':finite(r.pct)>=QUOTA_HOT_PCT?'var(--warn)':'var(--fg)'}">${pctTxt(r.pct)}</span>${tok}</span></div>`;
+}
+// The card listed each hop's meter but never answered the first question anyone actually has:
+// how much free usage is LEFT. Sum what the metered hops still have, and project when it runs
+// out at today's rate. Deliberately conservative in two ways, both stated on the card:
+//   * uncapped free hops (OVH's anonymous tier) are EXCLUDED — a budget nobody wrote down is a
+//     budget we do not know, and quietly calling it infinite is how a headroom figure ends up
+//     reassuring and wrong;
+//   * caps are LOCAL guardrails, usually set below the provider's published allowance, so this
+//     is the router's own budget rather than the vendor's hard limit.
+function quotaSummary(rows, stats, attempts){
+  if(!rows.length)return '';
+  const cap=rows.reduce((a,r)=>a+finite(r.cap),0);
+  const used=rows.reduce((a,r)=>a+finite(r.today),0);
+  if(cap<=0)return '';
+  // Quota sitting on an unreachable pool is not headroom (see unreachablePools). It is subtracted
+  // from the headline rather than hidden: the amount and the pools are named on the line below, so
+  // the card can never quietly shrink by thousands with no explanation.
+  const deadRows=rows.filter(r=>r.down);
+  const deadLeft=deadRows.reduce((a,r)=>a+Math.max(0,finite(r.cap)-finite(r.today)),0);
+  const deadPools=[...new Set(deadRows.map(r=>r.pool))];
+  const left=Math.max(0,cap-used-deadLeft), pctLeft=100*left/Math.max(1,cap-deadLeft);
+  const spent=rows.filter(r=>finite(r.cap)>0&&finite(r.today)>=finite(r.cap));
+
+  // Burn rate from the start of the router's own accounting day, not from midnight-by-clock.
+  const t0=finite(firstNum(stats&&stats.traffic_today&&stats.traffic_today.start_t));
+  const nowS=finite(firstNum(stats&&stats.generated_at))||Date.now()/1000;
+  const hrs=(t0>0&&nowS>t0)?(nowS-t0)/3600:0;
+  const perHr=(hrs>0.25&&used>0)?used/hrs:0;
+  const hrsLeft=perHr>0?left/perHr:0;
+  const dayLeft=Math.max(0,24-hrs);
+  let outlook='';
+  if(perHr>0){
+    outlook=(hrsLeft>=dayLeft)
+      ? `<span style="color:var(--ok)">lasts the day</span> at ${fmt(Math.round(perHr))}/h`
+      : `<span style="color:var(--warn)">~${hrsLeft<1?Math.round(hrsLeft*60)+'m':hrsLeft.toFixed(1)+'h'} left</span> at ${fmt(Math.round(perHr))}/h`;
+  }
+  const col=pctLeft<10?'var(--bad)':pctLeft<25?'var(--warn)':'var(--ok)';
+  // "requests left" is only half the headroom question — several of these pools meter TOKENS, and
+  // the router cannot tell you how much of THAT is left because no token budget is configured.
+  // State what was spent and say plainly that it is unmetered, rather than implying the request
+  // figure above is the whole story.
+  const tokTotal=firstNum(stats&&stats.quota&&stats.quota.total_tokens_today);
+  const tokNote=(tokTotal!=null&&tokTotal>0)
+    ? ` · <span class="mono">${fmtTok(tokTotal)}</span> tokens spent today <span class="muted">(measured, not capped — several pools meter tokens, not requests)</span>`:'';
+  return `<div class="kv" style="align-items:baseline;margin-bottom:10px">
+      <span><b class="mono" style="font-size:20px;color:${col}">${fmt(left)}</b>
+        <span class="muted">free requests left today</span></span>
+      <span class="mono muted">${fmt(used)} / ${fmt(cap)} used · ${pctTxt(100-pctLeft)}</span></div>
+    ${deadLeft>0?`<div class="sub" style="margin:-4px 0 8px;color:var(--warn)">⚠ excludes <b class="mono">${
+      fmt(deadLeft)}</b> on ${deadPools.map(p=>esc(providerName(p))).join(', ')} — ${
+      deadPools.length===1?'that pool has':'those pools have'} served <b>nothing</b> this run despite
+      repeated attempts, so the quota is configured but unreachable. It returns to the total the moment
+      ${deadPools.length===1?'it answers':'they answer'} again.</div>`:''}
+    <div class="sub" style="margin:-4px 0 10px">${outlook}${outlook?' · ':''}${
+      fmt(rows.length)} metered hop${rows.length===1?'':'s'}${
+      spent.length?` · <b>${fmt(spent.length)} already spent</b> (${spent.map(r=>esc(providerName(r.pool))).join(', ')})`:''
+    }${tokNote} · uncapped hops excluded · caps are the router's own guardrails, not the vendors' hard limits</div>`;
+}
+function renderQuota(stats){
+  const q=(stats&&stats.quota&&typeof stats.quota==='object')?stats.quota:null;
+  const prows=Array.isArray(stats&&stats.pool_rows)?stats.pool_rows:[];
+  const rows=quotaRowsOf(prows,unreachablePools(stats)); // every capped hop, hottest first
+  const hot=rows.filter(r=>r.pct>=QUOTA_HOT_PCT);
+  // the router's own hot list is only consulted when there are no per-hop counters to derive from
+  let hotShown=hot, hotFromRouter=false;
+  if(!rows.length&&q&&Array.isArray(q.pools_at_or_over_80pct)&&q.pools_at_or_over_80pct.length){
+    hotFromRouter=true;
+    hotShown=q.pools_at_or_over_80pct.map(raw=>{const r=(raw&&typeof raw==='object')?raw:{};
+      const today=finite(r.today), cap=finite(r.cap);
+      return {pool:String(r.pool==null?'':r.pool),model:String(r.model==null?'':r.model),today,cap,
+              pct:finite(firstNum(r.pct,cap>0?100*today/cap:null))};})
+      .sort((a,b)=>b.pct-a.pct);
+  }
+  // "hops that HAVE a cap" and "hops that have SPENT their cap" are different quantities and
+  // must never be compared to each other — see the exhaustedRows/disagrees note below.
+  const capped=rows.length||finite(firstNum(q&&q.pools_capped));
+  const exhaustedRows=rows.filter(r=>finite(r.cap)>0&&finite(r.today)>=finite(r.cap)).length;
+  const attempts=prows.length
+    ? prows.reduce((a,r)=>a+finite(r&&r.attempts_today),0)
+    : finite(firstNum(q&&q.total_attempts_today));
+  const hotCol=hotShown.length?'var(--warn)':'var(--ok)';
+  // CORRECTED 2026-07-27. This used to compare routerCapped against rows.length and warn on any
+  // difference, which fired on every healthy day and was WRONG — the two count different things.
+  // router_server._quota_snapshot increments pools_capped only when `today >= cap` (i.e. the hop
+  // is SPENT), whereas rows.length is every hop that merely HAS a cap configured. So 17 capped
+  // hops with 0 exhausted is the normal, healthy state, and the old warning declared it a router
+  // defect. Compare like with like: exhaustedRows is the same quantity pools_capped reports.
+  const routerCapped=firstNum(q&&q.pools_capped);
+  const disagrees=q&&rows.length>0&&routerCapped!=null&&routerCapped!==exhaustedRows;
+  $('quotaHead').innerHTML=`<b class="mono">${fmt(capped)}</b> hop${capped===1?'':'s'} with a daily cap · `
+    +`<b class="mono">${fmt(exhaustedRows)}</b> spent · `
+    +`<b class="mono" style="color:${hotCol}">${fmt(hotShown.length)}</b> at or over ${QUOTA_HOT_PCT}% · `
+    +`<b class="mono">${fmt(attempts)}</b> attempts today`
+    +(rows.length?' <span class="muted">· counted from the per-hop daily_cap / attempts_today counters</span>'
+                 :(hotFromRouter?' <span class="muted">· from the router’s quota block</span>':''));
+  let body;
+  if(hotShown.length){
+    body=hotShown.slice(0,QUOTA_LIST_CAP).map(r=>quotaRow(r,true)).join('');
+    const rest=rows.filter(r=>r.pct<QUOTA_HOT_PCT);
+    if(rest.length)body+=`<div class="sub" style="margin-top:8px">+${rest.length} more capped hop${
+      rest.length===1?'':'s'} below ${QUOTA_HOT_PCT}%</div>`;
+  }else if(rows.length){
+    // Nothing is hot — but "nothing is hot" is not "nothing is capped". Show the hops that DO
+    // carry a cap, ranked by how much of it today has eaten, so the card states the headroom
+    // instead of denying that any exists.
+    // UNREACHABLE ROWS ARE PINNED INTO THE VISIBLE SLICE. Rows sort by percent-of-cap used, and a
+    // pool that cannot serve is by definition barely used — so google, sitting at ~1% while its
+    // 4,380 requests were being subtracted from the headline, sorted below the 10-row cap and its
+    // "unreachable" chip never rendered once. The headline said it had excluded a pool the list
+    // then declined to show, which is the disagreement the chip exists to prevent. Verified on the
+    // live page rather than assumed: the chip count in this card was zero before this change.
+    const shown=quotaVisibleRows(rows,QUOTA_LIST_CAP);
+    body=mutedLine(`Every capped hop is below ${QUOTA_HOT_PCT}% of its daily quota — the free chain has headroom.`)
+      +shown.map(r=>quotaRow(r,false)).join('')
+      +(rows.length>shown.length?`<div class="sub" style="margin-top:8px">+${rows.length-shown.length} more capped hops</div>`:'');
+  }else{
+    body=mutedLine(prows.length
+      ? 'No hop in this chain carries a daily_cap — nothing to meter.'
+      : 'Per-hop quota counters ' + NEEDS_RESTART + '.');
+  }
+  if(disagrees)body+=`<div class="sub" style="color:var(--warn);margin-top:8px">⚠ the router’s quota block reports `
+    +`${fmt(routerCapped)} SPENT hop${routerCapped===1?'':'s'} while the per-hop counters show `
+    +`${fmt(exhaustedRows)} at or over cap — the per-hop counters above are what the Cloud pools table renders.</div>`;
+  $('quotaList').innerHTML=quotaSummary(rows,stats,attempts)+body;
+}
+
+// ---------- 13b) Provider keys — upstream account health ----------
+// WHY THIS CARD EXISTS: the router's own spend counter cannot see the upstream ACCOUNT. On
+// 2026-07-25 the OpenRouter key was hard-capped ($59.23 used of a $59 limit, $0 remaining) while
+// cloud_spend.json still showed ~$10 of daily budget, so 18 task slots routed into guaranteed
+// 403s — and nothing on this page said why. stats.key_health is the router's hourly zero-token
+// probe of each provider's OWN key endpoint, so an exhausted key is now stated, not inferred.
+const KEY_STATE={
+  healthy  :{label:'HEALTHY'    ,col:'var(--ok)' ,dot:'●'},
+  exhausted:{label:'EXHAUSTED'  ,col:'var(--bad)',dot:'●'},
+  invalid  :{label:'INVALID KEY',col:'var(--bad)',dot:'●'},
+  unknown  :{label:'UNKNOWN'    ,col:'var(--dim)',dot:'○'}};
+function keyStateOf(s){return KEY_STATE[String(s==null?'':s).toLowerCase()]||KEY_STATE.unknown;}
+// age in SECONDS -> "45s" / "12m" / "1h 04m" / "3d 02h". fmtMs tops out at "60m 00s", which reads
+// badly for a probe whose whole point is a slow (hourly) cadence.
+function fmtAge(sec){
+  if(!isNum(sec))return '–';
+  const s=Math.max(0,Math.round(Number(sec)));
+  if(s<60)return s+'s';
+  const m=Math.floor(s/60); if(m<60)return m+'m';
+  const h=Math.floor(m/60); if(h<24)return h+'h '+String(m-h*60).padStart(2,'0')+'m';
+  const d=Math.floor(h/24); return d+'d '+String(h-d*24).padStart(2,'0')+'h';
+}
+function keyMoneyText(r){
+  const used=firstNum(r.usage_usd), limit=firstNum(r.limit_usd), left=firstNum(r.limit_remaining_usd);
+  const bits=[];
+  if(used!=null)bits.push(fmtUsd(used)+' used'+(limit!=null?' of '+fmtUsd(limit):''));
+  if(left!=null)bits.push(fmtUsd(left)+' left');
+  if(r.is_free_tier===true)bits.push('free tier');
+  if(bits.length)return bits.join(' · ');
+  return r.error?String(r.error):'no reading yet';
+}
+function renderKeyHealth(stats){
+  const kh=(stats&&stats.key_health&&typeof stats.key_health==='object')?stats.key_health:null;
+  const head=$('keyHealthHead'), list=$('keyHealthList'), note=$('keyHealthNote');
+  const provs=kh&&kh.providers&&typeof kh.providers==='object'?kh.providers:null;
+  if(!provs){
+    head.textContent='–';
+    list.innerHTML=mutedLine('Upstream provider-key health '+NEEDS_RESTART
+      +'. Until then an exhausted paid key is invisible here and can only be inferred from 403s.');
+    note.textContent='';
+    return;
+  }
+  const rows=Object.keys(provs).sort().map(k=>Object.assign({provider:k},provs[k]||{}));
+  const bad=rows.filter(r=>String(r.status)==='exhausted'||String(r.status)==='invalid');
+  const unk=rows.filter(r=>String(r.status)!=='healthy'&&!bad.includes(r));
+  const age=firstNum(kh.age_s);
+  head.innerHTML=`<b class="mono">${fmt(rows.length)}</b> key${rows.length===1?'':'s'} monitored · `
+    +`<b class="mono" style="color:${bad.length?'var(--bad)':'var(--ok)'}">${fmt(bad.length)}</b> exhausted or invalid · `
+    +`<b class="mono" style="color:${unk.length?'var(--warn)':'var(--fg)'}">${fmt(unk.length)}</b> unknown · `
+    +(age!=null?'checked '+esc(fmtAge(age))+' ago':'<span style="color:var(--warn)">never checked</span>');
+  list.innerHTML=rows.map(r=>{
+    const st=keyStateOf(r.status), rowAge=firstNum(r.age_s);
+    return `<div class="kv" title="${esc(r.provider+' · '+(r.error||st.label))}">`
+      +`<span><span class="legsw" style="background:${poolColor(r.provider)}"></span> `
+      +`<b>${esc(providerName(r.provider))}</b> <span class="muted">· ${esc(r.billing||'paid')}</span>`
+      +(r.skips_paid_hops?' <span class="pill" style="background:var(--bad-bg);color:var(--bad)">paid hops skipped</span>':'')
+      +`</span><span class="flex gap6"><span class="muted mono">${esc(keyMoneyText(r))}</span>`
+      +`<span class="mono" style="color:${st.col};min-width:104px;text-align:right">${st.dot} ${esc(st.label)}</span>`
+      +`<span class="muted mono" style="min-width:60px;text-align:right">${esc(rowAge!=null?fmtAge(rowAge)+' ago':'–')}</span></span></div>`;
+  }).join('')||mutedLine('No provider exposes a zero-cost key endpoint to probe.');
+  const every=firstNum(kh.interval_s);
+  note.textContent=(bad.length
+      ? bad.map(r=>providerName(r.provider)).join(', ')+' cannot spend: paid hops there return 4xx until the account is funded. '
+      : 'Every monitored key can still spend. ')
+    +(kh.skip_exhausted_paid_keys===false
+      ? 'skip_exhausted_paid_keys is OFF — the router still attempts paid hops on a dead key.'
+      : 'skip_exhausted_paid_keys is on — paid hops on a measured-dead key are skipped; free hops on the same provider keep working.')
+    +' A probe that fails reports "unknown" and never changes routing.'
+    +(every!=null?' Checked every '+fmtAge(every)+' with a zero-token key lookup.':'');
+}
+
+// ---------- 14) Latency by pool / task / caller / node / model ----------
+const LAT_DIMS=[['pool','Pool'],['task','Task'],['caller','Caller'],['node','Node'],['model','Model']];
+let latDim='pool';
+function latencyBlock(stats){
+  const t=todayTraffic(stats);
+  return (t&&t.latency&&typeof t.latency==='object')?t.latency:null;
+}
+function latDimsAvailable(lat){
+  return LAT_DIMS.filter(d=>Array.isArray(lat&&lat['by_'+d[0]])&&lat['by_'+d[0]].length);
+}
+function latDimBrief(stats){
+  const avail=latDimsAvailable(latencyBlock(stats));
+  $('latDimBrief').textContent = avail.length
+    ? avail.length+' dimensions · which provider is actually fast'
+    : 'per-dimension latency '+NEEDS_RESTART;
+}
+function renderLatencyDims(stats){
+  const lat=latencyBlock(stats), avail=latDimsAvailable(lat);
+  const sw=$('latDimSwitch'), body=$('latDimBody');
+  if(!avail.length){
+    sw.innerHTML='';
+    body.innerHTML=mutedLine('Latency per pool / task / caller / node / model '+NEEDS_RESTART
+      +'. Per-provider latency is the number that shows which free pool is worth being first in the chain.');
+    latDimBrief(stats);
+    return;
+  }
+  if(!avail.some(d=>d[0]===latDim))latDim=avail[0][0];
+  const label=(avail.filter(d=>d[0]===latDim)[0]||['','Key'])[1];
+  sw.innerHTML=avail.map(d=>
+    `<button type="button" class="seg" data-dim="${esc(d[0])}" aria-pressed="${d[0]===latDim?'true':'false'}">${esc(d[1])}</button>`).join('');
+  const rows=lat['by_'+latDim].map(raw=>{
+    const r=(raw&&typeof raw==='object')?raw:{};
+    return {key:String(r.key==null?'-':r.key),n:finite(r.n),avg:firstNum(r.avg_ms,r.avg),
+            p50:firstNum(r.p50_ms,r.p50),p95:firstNum(r.p95_ms,r.p95),ok:firstNum(r.ok_pct)};
+  }).sort((a,b)=>b.n-a.n);
+  const maxAvg=Math.max(1,...rows.map(r=>finite(r.avg)));
+  $('latDimBrief').textContent=rows.length+' '+latDim+(rows.length===1?'':'s')+' · sorted by calls';
+  body.innerHTML=`<table class="mobile-table lat-table"><thead><tr>
+      <th>${esc(label)}</th><th class="num">Calls</th><th class="num">Avg</th><th class="num">p50</th>
+      <th class="num">p95</th><th class="num">Success</th><th>Avg vs slowest</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr>
+      <td${latDim==='node'?` title="${esc(r.key)}"`:''}><span class="legsw" style="background:${poolColor(r.key)}"></span> <b>${esc(
+        latDim==='pool'?providerName(r.key):latDim==='node'?nodeDisplay(r.key):r.key)}</b></td>
+      <td class="num">${fmt(r.n)}</td>
+      <td class="num" style="color:${msColor(r.avg,'typ')}">${esc(fmtMs(r.avg))}</td>
+      <td class="num" style="color:${msColor(r.p50,'typ')}">${esc(fmtMs(r.p50))}</td>
+      <td class="num" style="color:${msColor(r.p95,'tail')}">${esc(fmtMs(r.p95))}</td>
+      <td class="num" style="color:${okColor(r.ok)}">${pctTxt(r.ok)}</td>
+      <td><span class="bar" style="width:120px"><i style="width:${100*finite(r.avg)/maxAvg}%;background:${msColor(r.avg,'typ')}"></i></span></td>
+    </tr>`).join('')||'<tr><td class="muted" colspan="7">no rows in this dimension yet</td></tr>'}</tbody></table>`;
+}
+$('latDimSwitch').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-dim]');
+  if(!b)return;
+  latDim=b.getAttribute('data-dim');
+  renderLatencyDims(lastStats);
+});
+
+// ---------- 15) Per-task breakdown ----------
+function taskRowsOf(stats){
+  const t=todayTraffic(stats);
+  const src=Array.isArray(t&&t.tasks)?t.tasks:null;
+  if(src){
+    return {derived:false,rows:src.map(raw=>{
+      const r=(raw&&typeof raw==='object')?raw:{};
+      return {task:String(r.task==null?'-':r.task),requests:finite(r.requests),local:firstNum(r.local),
+              cloud:firstNum(r.cloud),ok:firstNum(r.ok_pct),avg:firstNum(r.avg_ms),p95:firstNum(r.p95_ms),
+              cost:firstNum(r.cost_usd),tok:firstNum(r.tokens_out)};
+    }).sort((a,b)=>b.requests-a.requests)};
+  }
+  // fallback: the per-caller task counters exist on every build — request counts only
+  const callers=(t&&t.callers)||(stats&&stats.callers)||{};
+  const agg={};
+  Object.values(callers).forEach(c=>{
+    if(!c||typeof c!=='object')return;
+    Object.entries(c.tasks||{}).forEach(([k,v])=>{agg[k]=finite(agg[k])+finite(v);});
+  });
+  const rows=Object.entries(agg).map(([task,requests])=>({task,requests,local:null,cloud:null,
+    ok:null,avg:null,p95:null,cost:null,tok:null})).sort((a,b)=>b.requests-a.requests);
+  return {derived:rows.length>0,rows};
+}
+function taskBrief(stats){
+  const t=taskRowsOf(stats);
+  $('taskBrief').textContent = t.rows.length
+    ? t.rows.length+' task'+(t.rows.length===1?'':'s')+(t.derived?' · request counts only':'')
+    : 'no task data yet';
+}
+function renderTasks(stats){
+  const t=taskRowsOf(stats);
+  taskBrief(stats);
+  if(!t.rows.length){$('taskBody').innerHTML=mutedLine('No task-level traffic recorded yet today.');return;}
+  const max=Math.max(1,...t.rows.map(r=>r.requests));
+  const body=t.rows.map(r=>{
+    const hasSplit=(r.local!=null||r.cloud!=null);
+    const l=finite(r.local), c=finite(r.cloud), tt=l+c||1;
+    return `<tr><td><b>${esc(r.task)}</b></td>
+      <td class="num">${fmt(r.requests)} <span class="bar" style="width:44px"><i style="width:${100*r.requests/max}%;background:var(--acc)"></i></span></td>
+      <td>${hasSplit
+        ? `<div class="bar" title="${l} local / ${c} cloud" style="width:110px"><i style="width:${100*l/tt}%;background:var(--local)"></i><i style="width:${100*c/tt}%;background:var(--cloud)"></i></div>
+           <span class="muted mono" style="margin-left:6px">${(100*l/tt).toFixed(0)}%L</span>`
+        : '<span class="muted">–</span>'}</td>
+      <td class="num" style="color:${okColor(r.ok)}">${pctTxt(r.ok)}</td>
+      <td class="num" style="color:${msColor(r.avg,'typ')}">${esc(fmtMs(r.avg))}</td>
+      <td class="num" style="color:${msColor(r.p95,'tail')}">${esc(fmtMs(r.p95))}</td>
+      <td class="num">${r.cost==null?'<span class="muted">–</span>':esc(fmtUsd(r.cost))}</td>
+      <td class="num">${r.tok==null?'<span class="muted">–</span>':fmt(Math.round(r.tok))}</td></tr>`;
+  }).join('');
+  $('taskBody').innerHTML=`<table class="mobile-table task-table"><thead><tr>
+      <th>Task</th><th class="num">Requests</th><th>Local / Cloud</th><th class="num">Success</th>
+      <th class="num">Avg</th><th class="num">p95</th><th class="num">Cost</th><th class="num">Tokens out</th>
+    </tr></thead><tbody>${body}</tbody></table>`
+    +(t.derived?`<div class="sub">requests aggregated from the per-caller task counters · success, latency, cost and token columns ${esc(NEEDS_RESTART)}</div>`:'');
+}
+
+// ---------- 16) Failures ----------
+function isFail(st){
+  if(isNum(st)){const n=Number(st);return n<200||n>=300;}
+  const s=String(st==null?'':st);
+  return s!==''&&!/^2/.test(s);
+}
+function normErrRow(raw){
+  const r=(raw&&typeof raw==='object')?raw:{};
+  return {when:(r.iso!=null?r.iso:r.t),caller:r.caller,task:r.task,pool:r.pool,
+          model:(r.model!=null?r.model:r.requested),node:r.node,status:r.status,ms:r.ms};
+}
+function errRowsOf(stats){
+  const t=todayTraffic(stats);
+  const eb=(t&&t.errors&&typeof t.errors==='object')?t.errors:null;
+  if(eb){
+    return {block:true,derived:false,recent:(Array.isArray(eb.recent)?eb.recent:[]).map(normErrRow),
+            byPool:toKeyRows(eb.by_pool),byCaller:toKeyRows(eb.by_caller),byStatus:toKeyRows(eb.by_status)};
+  }
+  // fallback: the live 100-call feed every build publishes at stats.recent
+  const feed=Array.isArray(stats&&stats.recent)?stats.recent:[];
+  const rows=feed.filter(r=>r&&isFail(r.status)).map(normErrRow)
+    .sort((a,b)=>{const x=epochOf(b.when),y=epochOf(a.when);return (x==null?0:x)-(y==null?0:y);});
+  const bp={},bc={},bs={};
+  rows.forEach(r=>{
+    const p=r.pool?String(r.pool):(r.node?String(r.node):'-');
+    bp[p]=finite(bp[p])+1;
+    const c=(r.caller==null||r.caller==='')?'-':String(r.caller);
+    bc[c]=finite(bc[c])+1;
+    const s=(r.status==null||r.status==='')?'?':String(r.status);
+    bs[s]=finite(bs[s])+1;
+  });
+  return {block:false,derived:rows.length>0,recent:rows,
+          byPool:toKeyRows(bp),byCaller:toKeyRows(bc),byStatus:toKeyRows(bs)};
+}
+function errBrief(stats,agg){
+  const e=errRowsOf(stats), el=$('errBrief');
+  const kpiFails=finite(agg&&agg.e4)+finite(agg&&agg.e5);
+  if(!kpiFails&&!e.recent.length){el.textContent='no failures today';el.style.color='';return;}
+  const bits=[];
+  if(kpiFails)bits.push(fmt(kpiFails)+' non-2xx today');
+  if(e.recent.length)bits.push(fmt(e.recent.length)+(e.block?' logged':' in the last 100 calls'));
+  el.textContent=bits.join(' · ');
+  el.style.color=kpiFails?'var(--warn)':'';
+}
+function renderErrors(stats){
+  const e=errRowsOf(stats);
+  errBrief(stats,lastAgg);
+  const kpiFails=finite(lastAgg&&lastAgg.e4)+finite(lastAgg&&lastAgg.e5);
+  if(!e.block&&!e.recent.length){
+    $('errBody').innerHTML = kpiFails
+      ? mutedLine(fmt(kpiFails)+' non-2xx calls today (from the status counters) — per-failure detail '+NEEDS_RESTART+'.')
+      : mutedLine('No failures today.');
+    return;
+  }
+  const mk=rows=>rows.length
+    ? rows.map(r=>`<div class="dd-row"><span>${esc(r.key)}</span><span class="mono">${fmt(r.n)}</span></div>`).join('')
+    : mutedLine('none');
+  const CAP=40, shown=e.recent.slice(0,CAP);
+  const table=shown.length?`<table class="mobile-table err-table"><thead><tr>
+      <th>Time</th><th>Caller</th><th>Task</th><th>Pool / model</th><th>Node</th><th class="num">Status</th><th class="num">Latency</th>
+    </tr></thead><tbody>${shown.map(r=>`<tr>
+      <td class="mono">${esc(fmtClock(r.when))}</td>
+      <td>${esc((r.caller==null||r.caller==='')?'-':r.caller)}</td>
+      <td class="muted">${esc(r.task==null?'-':r.task)}</td>
+      <td class="muted" style="max-width:250px;overflow:hidden;text-overflow:ellipsis"><span title="${esc(r.model)}">${
+        r.pool?esc(providerName(r.pool))+' · ':''}${esc((r.model==null||r.model==='')?'-':r.model)}</span></td>
+      <td class="muted" title="${esc(r.node==null?'-':String(r.node))}">${esc(nodeDisplay(r.node))}</td>
+      <td class="num" style="color:${statusColor(r.status)}">${esc((r.status==null||r.status==='')?'?':String(r.status))}</td>
+      <td class="num mono">${esc(fmtMs(r.ms))}</td></tr>`).join('')}</tbody></table>`
+    : mutedLine('no individual failures recorded');
+  $('errBody').innerHTML=`<div class="dd-grid" style="margin-bottom:12px">
+      <div><div class="dd-h">By pool / node</div>${mk(e.byPool)}</div>
+      <div><div class="dd-h">By caller</div>${mk(e.byCaller)}</div>
+      <div><div class="dd-h">By status</div>${mk(e.byStatus)}</div>
+    </div>`+table
+    +(e.derived?`<div class="sub">derived from the live 100-call feed · full-day failure aggregation ${esc(NEEDS_RESTART)}</div>`:'')
+    +(e.recent.length>CAP?`<div class="sub">showing the ${CAP} most recent of ${fmt(e.recent.length)}</div>`:'');
+}
+
+function drawSpark(){
+  const w=600,h=60,mx=Math.max(1,...spark);
+  const pts=spark.map((v,i)=>`${(i/(SPARKMAX-1))*w},${h-(v/mx)*(h-6)-3}`).join(' ');
+  // style="" rather than presentation attributes: a var() reference has to be in a CSS declaration
+  // to be re-resolved when the theme flips, which is what keeps the sparkline live across a toggle.
+  $('spark').innerHTML=`<polyline style="fill:none;stroke:var(--spark-line)" stroke-width="2" points="${pts}"/>`+
+    `<polyline style="fill:var(--spark-fill);stroke:none" points="0,${h} ${pts} ${w},${h}"/>`;
+}
+if(PHONE){
+  ['dockerDetails','poolDetails','hourDetails','latDimDetails','taskDetails'].forEach(id=>$(id).removeAttribute('open'));
+}
+$('dockerDetails').addEventListener('toggle',()=>{if($('dockerDetails').open)renderDocker(lastMetrics.docker,(lastMetrics.feed&&lastMetrics.feed.shed)||null);});
+$('poolDetails').addEventListener('toggle',()=>{if($('poolDetails').open)renderCloud(lastStats,lastHealth);});
+$('hourDetails').addEventListener('toggle',()=>{if($('hourDetails').open)renderHourly(lastStats);});
+$('latDimDetails').addEventListener('toggle',()=>{if($('latDimDetails').open)renderLatencyDims(lastStats);});
+$('taskDetails').addEventListener('toggle',()=>{if($('taskDetails').open)renderTasks(lastStats);});
+$('errDetails').addEventListener('toggle',()=>{if($('errDetails').open)renderErrors(lastStats);});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)clearTimeout(pollTimer);else runPoll();
+});
+runPoll();
+</script>
+</body>
+</html>

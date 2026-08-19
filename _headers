@@ -1,0 +1,22 @@
+/*
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://mnzdcxcolxiqprwkujxy.supabase.co http://127.0.0.1:11435 http://localhost:11435; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), browsing-topics=()
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# NOT overridable per-path: a `/favicon.svg` block with its own Cache-Control was tried
+# 2026-07-28 and Pages CONCATENATED the two values rather than letting the more specific
+# path win — the icon shipped with the self-contradicting
+# `no-cache, no-store, must-revalidate, public, max-age=604800`. The /* no-store is correct
+# for the consoles (they must never serve stale), and re-validating a 1.2 KB icon is not
+# worth a malformed header, so the brandmark deliberately inherits it.
+
+# connect-src MUST list 'self'. Specifying connect-src at all overrides default-src for
+# fetch/XHR, so without 'self' the page cannot fetch its OWN files -- including the
+# metrics.json fallback that exists precisely for when the hosted row is unreachable. Shipped
+# without it on 2026-08-19 and the fallback was blocked by this policy on every load: the page
+# sat on "connecting..." and rendered dashes, looking identical to the outage it was added to
+# survive. The Supabase origin is kept so a restored project needs no header change.

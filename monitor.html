@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" id="themecolor" content="#eceff4">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>LLM Router — Monitor</title>
+<!-- Link-preview card — see the note in index.html for why og: coexists with noindex, and why
+     og:image is absolute and raster. -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://llm-router-dashboard.pages.dev/monitor">
+<meta property="og:title" content="LLM Router — Monitor">
+<meta property="og:description" content="Per-call routing monitor: which pool served, which hop won, and what it cost.">
+<meta property="og:image" content="https://llm-router-dashboard.pages.dev/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<script>
+// Stamp the theme BEFORE the body paints (localStorage override -> light) so the first frame is
+// already in the right theme — no flash. Shared with index.html / the dock console: same token
+// names, same data-theme flip, same storage key ('router-theme') so a toggle on one router page
+// carries to the other. routerApplyTheme() is the single writer: html[data-theme] +
+// <meta theme-color> + the toggle's aria state, so the button can never advertise the wrong theme
+// (it does not exist yet while this runs in <head>, hence the DOMContentLoaded re-sync).
+var THEME_META={light:'#eceff4',dark:'#0d0f13'};
+function routerApplyTheme(t){
+  t=(t==='dark')?'dark':'light';
+  document.documentElement.setAttribute('data-theme',t);
+  var m=document.getElementById('themecolor');if(m)m.setAttribute('content',THEME_META[t]);
+  var b=document.getElementById('themebtn');
+  if(b){b.setAttribute('aria-pressed',t==='dark'?'true':'false');
+        b.setAttribute('aria-label',t==='light'?'Switch to dark theme':'Switch to light theme');}
+}
+(function(){var t=null;try{t=localStorage.getItem('router-theme');}catch(e){}
+ // LIGHT IS THE DEFAULT (user directive 2026-07-25). prefers-color-scheme is deliberately NOT
+ // consulted: this box runs a dark OS theme, so honouring it silently served a dark page to
+ // someone who asked for the light one. Only an explicit toggle (stored 'dark') overrides light.
+ if(t!=='light'&&t!=='dark')t='light';
+ routerApplyTheme(t);
+ document.addEventListener('DOMContentLoaded',function(){routerApplyTheme(document.documentElement.getAttribute('data-theme'));});}());
+// LIVE theme switch: this flips ONE attribute on <html>. Every colour on the page is a CSS custom
+// property, so the re-skin is instant and nothing re-renders — the 15s poll timer, the scroll
+// position, the active filter / search / window / source selection and the expanded rows are all
+// untouched because no JS state is read or written here.
+function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';var next=cur==='dark'?'light':'dark';try{localStorage.setItem('router-theme',next);}catch(e){}routerApplyTheme(next);}
+</script>
+<style>
+/* ---- theme token system: copied verbatim from the dock console (C:\coding-projects\dock\public\
+       index.html) so the router pages and the Docker console share one vocabulary. Refined light +
+       sophisticated dark, all semantic pairs AA-verified (never use #6e7781-class grays: 4.48:1
+       fails AA). The head script stamps data-theme BEFORE body paint, so :root[data-theme="dark"]
+       re-skins with no FOUC. Every rule reads var(--…), so retinting the tokens re-skins the page. */
+:root,:root[data-theme="light"]{
+  --bg:#eceff4;--surface:#ffffff;--surface-2:#f5f7fa;--surface-3:#eef1f6;
+  --border:#dbe0e8;--border-2:#e8ecf2;
+  --border-strong:#8c959f; /* interactive-control boundary: 3.05:1 on white (WCAG 1.4.11) */
+  --text:#0f172a;--text-2:#3a4557;--text-muted:#5b6675;
+  --accent:#4f46e5;--accent-strong:#4338ca;--accent-tint:#eef0fe;--accent-bd:#cdd2fb;--accent-ring:rgba(79,70,229,.30);
+  --logo-a:#4f46e5;--logo-b:#7c3aed;
+  --success:#0f7a37;--success-text:#116329;--success-bg:#e7f6ed;--success-bd:#bfe3cb;
+  --warn:#92400e;--warn-dot:#d97706;--warn-bg:#fdf2d6;--warn-bd:#eed8a4;
+  --danger:#b91c1c;--danger-dot:#b91c1c;--danger-solid:#c22323;--danger-bg:#fdecec;--danger-bd:#f4c6c6;
+  --stop:#57606a;--stop-dot:#8c959f;--stop-bg:#eef1f4;--stop-bd:#d5dae1;
+  /* host identity: MAIN reuses the accent family, the second laptop gets its OWN teal family so a
+     second host never reads as a state color (green/amber/red stay reserved for call status) */
+  --host-b:#0e5f73;--host-bg:#e2f4f7;--host-bd:#b9dfe7;
+  --tooltip-bg:#0f172a;--tooltip-fg:#ffffff;
+  --log-bg:#0f1319;--log-fg:#d6dce4;--log-muted:#8a94a3;--log-err:#ff9b9b;--log-warn:#f5c518;
+  --log-scroll-thumb:#4b5563;--log-scroll-track:#101418;--log-sel-bg:#333a55;--log-sel-fg:#e8ebf1;
+  --sel-bg:#cdd2fb;--sel-fg:#0f172a;--scroll-thumb:#7a8290;--scroll-track:#eceff4;  /* thumb 3.36:1 on track */
+  --shadow-card:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.04);
+  --shadow-lift:0 4px 14px rgba(15,23,42,.10);--shadow-pop:0 12px 32px rgba(15,23,42,.20);
+  --radius:11px;--radius-sm:7px;
+  --sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,Menlo,monospace;
+  /* MONITOR-ONLY family, same grammar as the tokens above (fg / -bg / -bd): cloud providers.
+     Violet is unclaimed in the dock palette — accent-indigo is MAIN, teal is the second laptop,
+     and green/amber/red stay reserved for status, so a cloud pool needs its own hue. 5.06:1 on
+     its own tint, 5.70:1 on white. */
+  --cloud:#7c3aed;--cloud-bg:#f4efff;--cloud-bd:#dcc9fb;
+  color-scheme:light;
+}
+/* ---- sophisticated midnight-slate dark theme ---- */
+:root[data-theme="dark"]{
+  --bg:#0d0f13;--surface:#161922;--surface-2:#1b1f29;--surface-3:#212633;
+  --border:#2b3140;--border-2:#242a37;
+  --border-strong:#3d4557;
+  --text:#e8ebf1;--text-2:#c3c9d6;--text-muted:#8b93a4;
+  --accent:#818cf8;--accent-strong:#a5b0ff;--accent-tint:#1a1f30;--accent-bd:#333a55;--accent-ring:rgba(129,140,248,.40);
+  --logo-a:#3b6fe0;--logo-b:#7c4ddb;
+  --success:#45d17f;--success-text:#5fd992;--success-bg:#10241a;--success-bd:#1e4a34;
+  --warn:#fbbf24;--warn-dot:#f59e0b;--warn-bg:#2a2110;--warn-bd:#574413;
+  --danger:#f87171;--danger-dot:#f87171;--danger-solid:#dc2626;--danger-bg:#2a1616;--danger-bd:#5a2a2a;
+  --stop:#8b93a4;--stop-dot:#5c6576;--stop-bg:#212633;--stop-bd:#2b3140;
+  --host-b:#67d5e8;--host-bg:#0f2a31;--host-bd:#1f4b57;
+  --tooltip-bg:#000000;--tooltip-fg:#f4f6fa;
+  --log-bg:#0b0e13;--log-fg:#d6dce4;--log-muted:#8a94a3;--log-err:#ff9b9b;--log-warn:#f5c518;
+  --log-scroll-thumb:#4b5563;--log-scroll-track:#101418;--log-sel-bg:#333a55;--log-sel-fg:#e8ebf1;
+  --sel-bg:#333a55;--sel-fg:#e8ebf1;--scroll-thumb:#626b80;--scroll-track:#161922;  /* thumb 3.30:1 on track */
+  --shadow-card:0 1px 2px rgba(0,0,0,.5);
+  --shadow-lift:0 6px 20px rgba(0,0,0,.55);--shadow-pop:0 14px 36px rgba(0,0,0,.62);
+  --cloud:#c4b5fd;--cloud-bg:#241c3a;--cloud-bd:#42356b;   /* 8.73:1 on its own tint */
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scrollbar-color:var(--scroll-thumb) var(--scroll-track);scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--scroll-track)}
+::-webkit-scrollbar-thumb{background:var(--scroll-thumb);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+::selection{background:var(--sel-bg);color:var(--sel-fg)}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 var(--sans)}
+header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);
+       padding-top:max(14px,env(safe-area-inset-top));position:sticky;top:0;
+       background:var(--surface);box-shadow:var(--shadow-card);z-index:6;flex-wrap:wrap}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.01em;color:var(--text)}
+/* brandmark — identical construction and glyph to index.html and to the dock console's .logo, so
+   the three consoles read as one system. See the longer note in index.html for why it carries its
+   own --logo-* stops instead of reusing --accent. */
+.brand{display:inline-flex;align-items:center;gap:11px;min-width:0}
+/* The brandmark and wordmark are the way home. Inherit colour and drop the underline so
+   the header looks unchanged; only the cursor and focus ring reveal it is a link. */
+.logo-link{display:inline-flex;align-items:center;text-decoration:none;color:inherit;border-radius:9px}
+.logo-link:hover{opacity:.85}
+.logo-link:focus-visible{outline:2px solid var(--logo-a);outline-offset:2px}
+.logo{flex:none;width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
+      background:linear-gradient(140deg,var(--logo-a),var(--logo-b));color:#fff;
+      box-shadow:0 1px 2px rgba(15,23,42,.25),inset 0 1px 0 rgba(255,255,255,.22)}
+.brand h1{display:inline-flex;align-items:baseline;gap:9px}
+.bsub{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);
+      border:1px solid var(--border);border-radius:999px;padding:2px 8px;align-self:center}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;vertical-align:middle;background:currentColor}
+.muted{color:var(--text-muted)} .right{margin-left:auto;display:flex;gap:14px;align-items:center;font-size:12.5px}
+a.nav{color:var(--accent);text-decoration:none;font-size:12.5px;font-weight:600;min-height:40px;display:inline-flex;align-items:center;padding:0 10px}
+a.nav:hover{color:var(--accent-strong);text-decoration:underline}
+a:focus-visible,button:focus-visible,input:focus-visible,tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* theme toggle: swaps sun/moon by data-theme; ghost button matching the console's control language */
+.iconbtn{flex:none;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;
+         background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;color:var(--text-2);cursor:pointer}
+.iconbtn:hover{background:var(--surface-2);color:var(--text)}
+.iconbtn .i-sun{display:none}
+.iconbtn .i-moon{display:inline-flex}
+:root[data-theme="dark"] .iconbtn .i-sun{display:inline-flex}
+:root[data-theme="dark"] .iconbtn .i-moon{display:none}
+.wrap{padding:18px 20px;max-width:1500px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:14px 16px;min-width:0;overflow-x:auto}
+.card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border-2);white-space:nowrap}
+th{color:var(--text-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
+.mono{font-variant-numeric:tabular-nums}
+.foot{padding:10px 20px;color:var(--text-muted);font-size:11.5px;border-top:1px solid var(--border)}
+/* ---- summary strip ---- */
+.strip{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-card);padding:8px 14px;display:flex;align-items:baseline;gap:8px}
+.stat b{font-size:20px;font-variant-numeric:tabular-nums;line-height:1;color:var(--text)}
+.stat span{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em}
+/* ---- filter rows ---- */
+.filters{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.flabel{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-right:2px;min-width:52px}
+.fbtn{background:var(--surface);border:1px solid var(--border);color:var(--text-2);border-radius:var(--radius-sm);
+      padding:5px 13px;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;
+      transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.fbtn:hover{background:var(--surface-2);border-color:var(--border-strong);color:var(--text)}
+.fbtn.active{background:var(--accent-tint);border-color:var(--accent-bd);color:var(--accent-strong);font-weight:600}
+.fbtn:disabled{opacity:.55;cursor:not-allowed}
+.shown{margin-left:auto;font-size:12px;color:var(--text-muted)}
+.qbox{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);
+      padding:6px 12px;font:inherit;font-size:12.5px;min-width:280px;flex:1;max-width:460px;outline:none}
+.qbox:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.qbox::placeholder{color:var(--text-muted)}
+/* ---- feed table ---- */
+#feed tr.call{cursor:pointer}
+#feed tr.call>td{background:var(--surface);transition:background-color .12s ease}
+#feed tr.call.alt>td{background:var(--surface-2)}          /* zebra: computed in JS, so the
+                                                              interleaved detail rows can't skew it */
+#feed tr.call:hover>td{background:var(--surface-3)}
+#feed tr.call.open>td{background:var(--accent-tint)}
+.caret{display:inline-block;width:9px;color:var(--text-muted);transition:transform .15s ease;font-size:10px}
+.caret.open{transform:rotate(90deg);color:var(--accent-strong)}
+/* ---- provider badges: dock's .badge grammar (tinted family + leading dot) ---- */
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;
+       font:600 11px var(--sans);letter-spacing:.01em;white-space:nowrap}
+.badge .bdot{width:6px;height:6px;border-radius:50%;flex:none;background:currentColor}
+.p-cloud{color:var(--cloud);background:var(--cloud-bg);border:1px solid var(--cloud-bd)}
+.p-main{color:var(--accent-strong);background:var(--accent-tint);border:1px solid var(--accent-bd)}
+.p-batch{color:var(--accent-strong);background:var(--accent-tint);border:1px dashed var(--accent-bd)}
+.p-levitin{color:var(--host-b);background:var(--host-bg);border:1px solid var(--host-bd)}
+.p-other{color:var(--stop);background:var(--stop-bg);border:1px solid var(--stop-bd)}
+/* ---- status pills ---- */
+.st{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font:600 11px var(--mono);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+.st-ok{color:var(--success-text);background:var(--success-bg);border:1px solid var(--success-bd)}
+.st-warn{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-bd)}
+.st-bad{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-bd)}
+.st-other{color:var(--stop);background:var(--stop-bg);border:1px solid var(--stop-bd)}
+/* ---- provider health marker on the "Providers today" strip. Same pill grammar as .st above
+       (tinted family + 1px tinted border), one size down because it rides inside a 12px muted
+       line beside a count. The COUNT is never touched — "Google ×471" stayed true all through the
+       2026-08-01 billing block; what was missing was "and it has been dead since 19:22". ---- */
+.pst{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;margin-left:5px;
+     font:600 10px var(--sans);letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;
+     cursor:help}
+.pst-blocked{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-bd)}
+.pst-cooling{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-bd)}
+/* A provider that is still SERVING but has some hops cooling gets no badge — that state is
+   ordinary and a permanent marker would be wallpaper. It gets the cursor only, so the fraction
+   in its tooltip is discoverable without claiming anything is wrong. */
+.pdeg{cursor:help}
+/* ---- requested -> served model pair ---- */
+.mreq{color:var(--text-muted)}
+.marrow{color:var(--text-muted);margin:0 4px;font-weight:600}
+.mserved{color:var(--text)}
+.mode{font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.sep{color:var(--border-strong);margin:0 2px}
+.rel{color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.empty{color:var(--text-muted);text-align:center;padding:36px 10px;font-size:13.5px}
+.dlink{color:var(--accent);text-decoration:none;font-weight:700;font-size:14px;padding:2px 7px;border-radius:6px}
+.dlink:hover{background:var(--accent-tint);color:var(--accent-strong);text-decoration:none}
+.toggle{width:32px;height:32px;display:inline-grid;place-items:center;background:transparent;border:0;border-radius:7px;
+        color:var(--text-muted);padding:0;cursor:pointer}
+.toggle:hover{background:var(--accent-tint);color:var(--accent-strong)}
+.feed-more{display:none;width:100%;min-height:44px;margin-top:10px;background:var(--surface-2);border:1px solid var(--border);
+           border-radius:9px;color:var(--accent);font:inherit;font-weight:650;cursor:pointer}
+.feed-more:hover{border-color:var(--accent-bd);background:var(--accent-tint);color:var(--accent-strong)}
+/* ---- expanded detail ---- */
+tr.detail > td{background:var(--surface-2);border-bottom:1px solid var(--border);padding:0;white-space:normal}
+.dd{padding:14px 16px}
+.dd-story{font-size:13px;margin:0 0 12px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px}
+.dd-f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.dd-k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
+.dd-v{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;word-break:break-word;white-space:normal}
+.dd-chain{margin-top:12px;border-top:1px dashed var(--border);padding-top:10px}
+.dd-hop{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;color:var(--text-muted)}
+.dd-pre{white-space:pre-wrap;word-break:break-word;background:var(--surface-3);border:1px solid var(--border);
+        border-radius:8px;padding:8px 10px;font:12px/1.5 var(--mono);color:var(--text);max-height:130px;overflow:auto}
+.search-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.search-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;min-width:52px}
+.search-help{font-size:11px;color:var(--text-muted);margin-left:auto}
+/* ---- search syntax reference: collapsed by default, so it costs returning users nothing ---- */
+.qsyntax{margin:-4px 0 10px}
+.qsyntax>summary{font-size:11px;color:var(--text-muted);cursor:pointer;list-style:none;
+     display:inline-flex;align-items:center;gap:5px;padding:3px 0;min-height:24px;user-select:none}
+.qsyntax>summary::-webkit-details-marker{display:none}
+.qsyntax>summary::before{content:"›";display:inline-block;transition:transform .15s ease;font-size:13px}
+.qsyntax[open]>summary::before{transform:rotate(90deg)}
+.qsyntax>summary:hover{color:var(--text-2)}
+.qs-body{border:1px solid var(--border);background:var(--surface-2);border-radius:var(--radius-sm);
+     padding:11px 13px;margin-top:6px}
+.qs-p{margin:0 0 9px;font-size:12px;color:var(--text-2);line-height:1.55}
+.qs-note{margin:9px 0 0;font-size:11.5px;color:var(--text-muted);line-height:1.5;
+     border-top:1px dashed var(--border);padding-top:8px}
+.qs-body code{font:11.5px var(--mono);background:var(--surface-3);border:1px solid var(--border);
+     border-radius:3px;padding:0 4px;color:var(--text)}
+.qs-legend{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.qs-ex{display:flex;flex-wrap:wrap;gap:6px}
+.qs-chip{font:11.5px var(--mono);background:var(--surface);border:1px solid var(--border-strong);
+     color:var(--text-2);border-radius:5px;padding:3px 8px;cursor:pointer;min-height:26px;
+     display:inline-flex;align-items:center;gap:6px;
+     transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.qs-chip:hover{background:var(--surface-3);border-color:var(--accent-bd);color:var(--text)}
+.qs-chip .swatch{width:9px;height:9px;border-radius:50%;flex:none}
+/* ---- facet (per-column) filters: value list + counts, multi-select, like a pivot filter ---- */
+.facet{position:relative;display:inline-block}
+.facet>.fbtn{display:inline-flex;align-items:center;gap:6px}
+.facet>.fbtn .caretdown{font-size:9px;opacity:.7}
+.facet>.fbtn .fcount{background:var(--accent);color:#fff;border-radius:9px;padding:0 5px;
+     font-size:10px;font-weight:700;min-width:16px;text-align:center}
+.fpanel{position:absolute;z-index:40;top:calc(100% + 5px);left:0;min-width:250px;max-width:330px;
+     background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+     box-shadow:var(--shadow-pop);padding:8px;display:none}
+.facet.open .fpanel{display:block}
+.fpanel-head{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.fpanel-head input{flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--border);
+     color:var(--text);border-radius:5px;padding:4px 8px;font:inherit;font-size:12px;outline:none}
+.fpanel-head input:focus{border-color:var(--accent)}
+.fpanel-act{font-size:11px;color:var(--accent);cursor:pointer;background:none;border:none;padding:2px 4px;white-space:nowrap}
+.fpanel-act:hover{text-decoration:underline}
+.flist{max-height:264px;overflow:auto;margin:0;padding:0;list-style:none}
+.flist li{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer;
+     font-size:12.5px;min-height:28px}
+.flist li:hover{background:var(--surface-2)}
+.flist li.on{background:var(--accent-tint)}
+.flist input{accent-color:var(--accent);flex:none;margin:0}
+.flist .fname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist .fn{color:var(--text-muted);font-variant-numeric:tabular-nums;font-size:11.5px;flex:none}
+.flist li.zero .fname,.flist li.zero .fn{opacity:.45}
+.fempty{color:var(--text-muted);font-size:12px;padding:8px 6px;text-align:center}
+.history-note{display:none;background:var(--warn-bg);border:1px solid var(--warn-bd);color:var(--warn);
+              border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:12px}
+
+@media (max-width:640px), (max-width:900px) and (hover:none){
+  body{font-size:13.5px;padding-bottom:env(safe-area-inset-bottom)}
+  /* single flexible column now that .brand holds the mark, the status dot and the title; .right
+     still spans the full width on its own row below. */
+  header{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;padding:10px 12px;
+         padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));
+         padding-top:max(10px,env(safe-area-inset-top))}
+  header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  header .right{grid-column:1/-1;margin:0;justify-content:space-between;gap:10px;width:100%}
+  .wrap{padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left))}
+  .strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+  .stat{min-width:0;padding:9px 10px;display:grid;grid-template-columns:1fr;gap:4px}
+  .stat b{font-size:19px}
+  .stat span{font-size:9.5px;white-space:normal}
+  #srcBreak{max-height:68px;overflow:auto;padding:7px 0}
+  .filters{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none;
+           padding:2px 0 6px;margin-bottom:4px}
+  .filters::-webkit-scrollbar{display:none}
+  .filters .flabel{position:sticky;left:0;z-index:1;background:var(--bg);align-self:stretch;display:flex;align-items:center}
+  .fbtn{min-width:44px;min-height:44px;flex:0 0 auto;padding:8px 14px}
+  .shown{flex:0 0 auto;margin-left:4px;align-self:center}
+  .search-row{display:grid;grid-template-columns:1fr;margin:4px 0 10px}
+  .search-label{min-width:0}
+  .qbox{width:100%;max-width:none;min-width:0;min-height:44px;font-size:16px;border-radius:10px}
+  .search-help{margin:0;line-height:1.35}
+  /* the syntax chips are the primary way to use this on a phone — no keyboard punctuation needed,
+     so they get real tap targets and the panel scrolls instead of stretching the page */
+  .qsyntax{margin:0 0 10px}
+  .qsyntax>summary{min-height:34px}
+  .qs-body{padding:10px;max-height:52vh;overflow:auto;-webkit-overflow-scrolling:touch}
+  .qs-chip{min-height:34px;padding:5px 10px}
+  #expandAll{display:none}
+  .card{padding:10px;overflow:hidden}
+  .card h2{line-height:1.4}
+  .feed-help{display:block;margin-top:3px}
+  .feed-table,.feed-table tbody{display:block;width:100%}
+  .feed-table thead{display:none}
+  .feed-table tr.call{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:2px 8px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:10px;margin-bottom:9px;padding:8px;min-height:56px}
+  .feed-table tr.call.open{background:var(--accent-tint);border-color:var(--accent-bd)}
+  /* the desktop zebra/hover/open td tints would paint OVER the card background here */
+  .feed-table tr.call>td{display:block;border:0;padding:2px 0;white-space:normal;text-align:left!important;max-width:none!important;
+    overflow:visible!important;min-width:0;background:transparent!important}
+  .feed-table tr.call>td:nth-child(1){grid-row:1/4;display:flex;align-items:center}
+  .feed-table tr.call>td:nth-child(2){grid-column:2;font-weight:650}
+  .feed-table tr.call>td:nth-child(3){grid-column:2;overflow-wrap:anywhere!important}
+  .feed-table tr.call>td:nth-child(4){grid-column:2;color:var(--text-muted)}
+  .feed-table tr.call>td:nth-child(5){grid-column:2/4}
+  .feed-table tr.call>td:nth-child(6){grid-column:2/4;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--text)}
+  .feed-table tr.call>td:nth-child(7){grid-column:3;grid-row:1;text-align:right!important}
+  .feed-table tr.call>td:nth-child(8){grid-column:3;grid-row:2;text-align:right!important}
+  .feed-table tr.call>td:nth-child(9){grid-column:3;grid-row:3;text-align:right!important}
+  .feed-table tr.call>td:nth-child(10){display:none}
+  .toggle{width:44px;height:44px}
+  .feed-more{display:block}
+  tr.detail{display:block;margin:-5px 0 10px}
+  tr.detail>td{display:block!important;padding:0!important;border:1px solid var(--border);border-radius:0 0 10px 10px}
+  .dd{padding:12px}
+  .dd-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .dd-story>a,.dlink{min-height:44px;display:inline-flex;align-items:center}
+  .dd-pre{max-height:none;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .empty{text-align:left;padding:24px 8px;white-space:normal}
+  .foot{padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">
+    <!-- The brandmark is the way back to the overview. It was a bare <span>, so the one gesture
+         every dashboard trains you to make -- click the logo -- did nothing here. The glyph stays
+         aria-hidden (it is decorative), so the LINK carries the accessible name instead. -->
+    <a class="logo-link" href="/" aria-label="Back to the main dashboard" title="Back to the main dashboard">
+    <span class="logo" aria-hidden="true">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 11 5.6 5"/><path d="M16 11l2.4-6"/>
+        <rect x="2.6" y="11" width="18.8" height="8" rx="2.4"/>
+        <circle cx="6.2" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="8.9" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="11.6" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="14.3" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+        <circle cx="18.2" cy="15" r="0.85" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+    </a>
+    <h1><a class="logo-link" href="/">LLM Router</a> <span class="bsub">Monitor</span></h1>
+    <span class="dot" id="statusDot" role="status" aria-label="Router status unknown" style="color:var(--text-muted)"></span>
+  </span>
+  <div class="right">
+    <span id="updated" class="muted" aria-live="polite">connecting…</span>
+    <a class="nav" href="index.html">← Summary</a>
+    <button id="themebtn" class="iconbtn" type="button" aria-label="Toggle light or dark theme" aria-pressed="false" title="Toggle light / dark" onclick="toggleTheme()">
+      <svg class="i-moon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z"/></svg>
+      <svg class="i-sun" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="strip" id="strip">
+    <div class="stat"><b id="sTotal">–</b><span id="lTotal">calls today</span></div>
+    <div class="stat"><b id="s2xx" style="color:var(--success)">–</b><span id="l2xx">2xx today</span></div>
+    <div class="stat"><b id="s4xx" style="color:var(--warn)">–</b><span id="l4xx">4xx today</span></div>
+    <div class="stat"><b id="s5xx" style="color:var(--danger)">–</b><span id="l5xx">5xx today</span></div>
+    <div class="stat"><b id="sLocal" style="color:var(--accent-strong)">–</b><span id="lLocal">local today</span></div>
+    <div class="stat"><b id="sCloud" style="color:var(--cloud)">–</b><span id="lCloud">cloud today</span></div>
+    <div class="stat"><b id="sAvg">–</b><span id="lAvg">avg latency today</span></div>
+    <div class="stat"><b id="sP95">–</b><span id="lP95">p95 latency today</span></div>
+    <div class="stat"><b id="sTps">–</b><span id="lTps">median output tok/s</span></div>
+    <div class="stat"><b id="sSpend" style="color:var(--cloud)">–</b><span id="lSpend">spend today</span></div>
+  </div>
+  <div id="srcBreak" style="margin:2px 0 10px;font-size:12px;color:var(--text-muted)">
+    <span class="muted" id="srcLabel" style="text-transform:uppercase;letter-spacing:.06em">Providers today</span>
+    <span id="srcBreakList" style="margin-left:8px">–</span>
+  </div>
+
+  <div class="filters">
+    <span class="flabel">Show</span>
+    <button class="fbtn active" data-type="all" aria-pressed="true">All</button>
+    <button class="fbtn" data-type="errors" aria-pressed="false">Errors</button>
+    <button class="fbtn" data-type="cloud" aria-pressed="false">Cloud</button>
+    <button class="fbtn" data-type="local" aria-pressed="false">Local</button>
+    <button class="fbtn" data-type="slow" aria-pressed="false">Slow (&gt;5s)</button>
+  </div>
+  <div class="search-row">
+    <label class="search-label" for="q">Search</label>
+    <input id="q" class="qbox" type="search" autocomplete="off" spellcheck="false"
+           placeholder="anything — project:job_application · status:5xx · latency:&gt;5s · task:agentic -cloud"
+           title="Bare words match the whole row (including its colours). field:value narrows: project (= caller) task provider pool machine model reqmodel node mode kind status latency cost age id colour. Numeric fields take > >= < <= != and units (latency:>5s, age:<15m, cost:>0). Prefix - to exclude, use | for OR, quote phrases.">
+    <span class="search-help" id="searchHelp">Live searches the newest 500 persistent metadata records.</span>
+  </div>
+  <details class="qsyntax" id="qsyntax">
+    <summary>search syntax — project, and every other parameter</summary>
+    <div class="qs-body">
+      <p class="qs-p"><b>Project is the caller</b> — the automation that made the call
+        (<code>project:job_application_automation</code>, <code>project:freelance_automation</code>,
+        <code>project:android_automation</code>). A call that arrives with no <code>X-Caller</code>
+        header and no <code>/c/&lt;caller&gt;/</code> path prefix is shown and searched as
+        <code>project:unattributed</code> rather than as a blank cell, so an unlabelled row reads as
+        information instead of looking like a rendering fault. <code>caller:</code> still works.</p>
+      <div class="qs-legend" id="qsLegend"></div>
+      <p class="qs-p"><b>Fields</b> — <code>caller task provider pool machine model reqmodel node mode kind
+        status latency cost age id color</code>. Numeric ones take <code>&gt; &gt;= &lt; &lt;= !=</code> and
+        real units. Prefix <code>-</code> to exclude, <code>|</code> for OR, <code>"quotes"</code> for phrases.</p>
+      <div class="qs-ex" id="qsEx"></div>
+      <p class="qs-note">In <b>History</b> the plain words are searched server-side across full prompts
+        and outputs; <code>field:</code> terms and <code>-</code> exclusions refine the loaded page here.</p>
+    </div>
+  </details>
+  <div class="history-note" id="historyNote">Persistent prompt/output history is private to the router computer and is unavailable from this phone.</div>
+  <div class="filters">
+    <span class="flabel">Window</span>
+    <button class="fbtn" data-win="300" aria-pressed="false">5m</button>
+    <button class="fbtn" data-win="900" aria-pressed="false">15m</button>
+    <button class="fbtn" data-win="3600" aria-pressed="false">1h</button>
+    <button class="fbtn active" data-win="0" aria-pressed="true">All</button>
+  </div>
+  <div class="filters" id="facetBar">
+    <span class="flabel">Columns</span>
+    <!-- facet buttons are rendered by buildFacetBar(); counts come from the live rows -->
+    <button class="fbtn" id="facetClear" style="display:none">Clear all ✕</button>
+  </div>
+  <div class="filters">
+    <span class="flabel">Source</span>
+    <button class="fbtn active" data-src="live" aria-pressed="true">Live feed</button>
+    <button class="fbtn" id="historyBtn" data-src="history" aria-pressed="false">History</button>
+    <button class="fbtn" id="hPrev" style="display:none">‹ newer</button>
+    <button class="fbtn" id="hNext" style="display:none">older ›</button>
+    <button class="fbtn" id="expandAll" style="margin-left:14px">⊕ Expand all</button>
+    <span class="shown" id="shown">–</span>
+  </div>
+
+  <div class="card">
+    <h2 id="feedTitle">Persistent recent feed <span class="muted feed-help" style="text-transform:none;letter-spacing:0">· newest 500 completed calls · redacted metadata only</span></h2>
+    <table class="feed-table">
+      <thead><tr>
+        <th style="width:14px"></th><th>Time</th><th>Project</th><th>Task</th>
+        <th title="who actually served the call: a cloud pool, or the physical laptop">Provider</th>
+        <th title="requested model → the model that actually answered (they differ whenever a hop resolves an alias or a free pool substitutes)">Model</th>
+        <th class="num">Status</th><th class="num">Latency</th>
+        <th class="num" title="output tokens per second of serving time (completion tokens ÷ latency, minus any local queue wait). Blank when a call produced fewer than 16 output tokens — below that the number measures prompt processing, not generation.">Tok/s</th>
+        <th class="num">Cost</th><th style="width:34px"></th>
+      </tr></thead>
+      <tbody id="feed"></tbody>
+    </table>
+    <button class="feed-more" id="showMore" type="button"></button>
+  </div>
+</main>
+
+<div class="foot">Cloudflare Pages &middot; data via Supabase &middot; Live feed = the newest 500 completed calls from the persistent archive, with prompt, output, and path removed (pushed ~15s and survives router restarts) &middot; History = the private on-disk archive including full prompts &amp; outputs (readable when this page can reach the router at 127.0.0.1) &middot; <span id="ageNote">–</span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const SUPA_URL="https://mnzdcxcolxiqprwkujxy.supabase.co";
+const SUPA_KEY="sb_publishable_arytda7OdDlO3k1D2LL4Eg_wsvwidF9";
+const LOCAL="http://127.0.0.1:11435";   // full history + bodies live ONLY on the router box
+let CAN_LOCAL_HISTORY=false;
+const PHONE=matchMedia('(max-width:640px), (max-width:900px) and (hover:none)').matches;
+const HPAGE=PHONE?50:200;
+const POLL_MS=(navigator.connection&&navigator.connection.saveData)?45000:15000;
+const LIVE_BATCH=25;
+// How many rows are in the DOM at once. The live feed carries up to 500 calls now (was
+// 100), and every row can expand into a detail panel, so they are rendered in windows and
+// grown by an IntersectionObserver sentinel as you scroll — the whole set stays reachable
+// without paying for 500 rows of DOM up front. The button remains as a no-JS-observer
+// fallback and as an explicit control.
+const PAGE_BATCH=PHONE?LIVE_BATCH:120;
+
+let TYPE="all";         // all | errors | cloud | local | slow
+let WIN=0;              // seconds; 0 = all
+let SOURCE="live";      // live (Supabase persistent, redacted last-100) | history (local private archive)
+let SEARCHQ="";
+let lastRecent=[];      // newest 500 persisted calls; metadata only (no prompt/output/path)
+let lastTrafficToday={}; // restart-safe aggregate from the persistent history database
+// health.cloud_readiness: per-cloud-provider circuit state from the router's own breaker
+// (state / cooling_s / hops_cooling / last_error). Absent on an older router -> {} -> no markers.
+let lastReadiness={};
+let histRows=[], histTotal=0, histOffset=0, histErr=null, histTimer=null,histRequest=0,pollTimer=null,polling=false;
+let lastAge=1e9;
+let liveVisible=PAGE_BATCH;   // rows currently rendered; grows on scroll (see growFeed)
+const openRows=new Set(); // expanded row keys, survives refresh
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const rowKey=c=>String(c&&(c.id!=null?('h'+c.id):[c.t,c.caller,c.model,c.ms].join('|')));
+
+// ---- PROVIDER: who actually served the call --------------------------------------------------
+// A call is served either by a CLOUD POOL (the `pool` field: google / cerebras / groq / …) or by a
+// physical LAPTOP. "local" is not a provider — the fleet has two machines and they are ~5x apart on
+// latency, so each gets its own name, matching the dock console's MAIN / LEVITIN vocabulary.
+// The router process itself runs on LEVITIN (docs/LEVITIN-RUNTIME.md, active 2026-07-12):
+//   node 'new' / 'local'  -> 127.0.0.1:21434 -> reverse tunnel -> MAIN's RTX 5090 Ollama
+//   node 'local-batch'    -> 127.0.0.1:21436 -> reverse tunnel -> MAIN's batch Ollama
+//   node 'old'            -> 127.0.0.1:11434 -> LEVITIN's own RTX 3070 Ollama
+// The dense table cell shows the short codename; the full laptop string rides in the title.
+const MAIN_BOX="MAIN — Lenovo Legion 9 18IAX10 (RTX 5090 24 GB)";
+const LEVITIN_BOX="LEVITIN — Lenovo Legion 5 Pro 16ACH6H (RTX 3070 8 GB)";
+const NODE_PROVIDERS={
+  main:    {short:"MAIN",       cls:"p-main",    long:MAIN_BOX},
+  batch:   {short:"MAIN·batch", cls:"p-batch",   long:MAIN_BOX+" · batch Ollama (heavy swap models)"},
+  levitin: {short:"LEVITIN",    cls:"p-levitin", long:LEVITIN_BOX},
+};
+function nodeProvider(node){
+  const n=String(node==null?'':node).toLowerCase();
+  if(n.includes("levitin")||n.includes("old")) return NODE_PROVIDERS.levitin;
+  if(n.includes("batch"))                      return NODE_PROVIDERS.batch;
+  if(n==="new"||n==="local"||n.includes("127.0.0.1")||n.includes("localhost")) return NODE_PROVIDERS.main;
+  if(n==="") return {short:"?",cls:"p-other",long:"provider not reported"};
+  return {short:String(node),cls:"p-other",long:"Local node "+node};
+}
+const isCloud = c => String(c&&c.node).toLowerCase()==="cloud";
+
+const PROVIDER_NAMES = {
+  google:'Google', mistral:'Mistral', groq:'Groq', cerebras:'Cerebras', cloudflare:'Cloudflare',
+  github:'GitHub', nvidia:'NVIDIA', cohere:'Cohere', zai:'Z.ai', 'ollama-cloud':'Ollama Cloud',
+  huggingface:'HuggingFace', ovh:'OVH', vercel:'Vercel', longcat:'LongCat', openrouter:'OpenRouter',
+  sambanova:'SambaNova', modelscope:'ModelScope', kilo:'Kilo',llm7:'LLM7',lightning:'Lightning',
+  prism:'Prism',euri:'EURI',llmrack:'LLMRack',freeai:'Free.ai',fullai:'FullAI',bytez:'Bytez',
+  aihorde:'AI Horde',pollinations:'Pollinations',opencode:'OpenCode',sealion:'SEA-LION',
+};
+function providerName(p){ if(!p) return ''; const k=String(p).toLowerCase(); return PROVIDER_NAMES[k]||p; }
+// {short, long, cls, cloud} for one call (or one traffic_today.sources entry — same node/pool shape)
+function providerInfo(c){
+  if(isCloud(c)){
+    const name=providerName(c&&c.pool);
+    return name ? {short:name, cls:"p-cloud", long:"Cloud free pool · "+name, cloud:true}
+                : {short:"cloud", cls:"p-cloud", long:"Cloud pool (provider not reported)", cloud:true};
+  }
+  const info=nodeProvider(c&&c.node);
+  return {short:info.short, cls:info.cls, long:info.long, cloud:false};
+}
+const sourceLabel = c => providerInfo(c).short;
+// The RAW pool key a cloud call was served by ("google", "groq", "ollama-cloud") — the key
+// health.cloud_readiness is indexed by. '' for local nodes, which have no cloud pool.
+function poolKey(c){ return isCloud(c) ? String((c&&c.pool)||'').toLowerCase() : ''; }
+// summary-strip tint per provider family (mirrors the badge classes)
+const PROVIDER_COL={"p-cloud":"var(--cloud)","p-main":"var(--accent-strong)","p-batch":"var(--accent-strong)",
+                    "p-levitin":"var(--host-b)","p-other":"var(--text-muted)"};
+function providerBadge(c){
+  const p=providerInfo(c);
+  return `<span class="badge ${p.cls}" title="${esc(p.long)}"><span class="bdot" aria-hidden="true"></span>${esc(p.short)}</span>`;
+}
+
+// ---- time / format helpers ----
+function nowS(){return Date.now()/1000;}
+function ageS(t){return (t==null||isNaN(+t))?1e9:Math.max(0,nowS()-(+t));}
+function fmtClock(t){
+  if(t==null||isNaN(+t)) return "–";
+  const d=new Date((+t)*1000); if(isNaN(d.getTime())) return "–";
+  const p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+function fmtFull(t){
+  if(t==null||isNaN(+t)) return "–";
+  const d=new Date((+t)*1000); if(isNaN(d.getTime())) return "–";
+  const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+function relAgo(t){
+  if(t==null||isNaN(+t)) return "";
+  let s=Math.max(0,Math.round(ageS(t)));
+  if(s<60)   return s+"s ago";
+  if(s<3600) return Math.round(s/60)+"m ago";
+  if(s<86400)return Math.round(s/3600)+"h ago";
+  return Math.round(s/86400)+"d ago";
+}
+// A DURATION in seconds — relAgo() above takes an EPOCH and is not interchangeable with it. Used
+// by the provider pill for the router's `unverified_s`, which is already an elapsed count.
+function fmtSpan(sec){
+  let s=Math.max(0,Math.round(Number(sec)||0));
+  if(s<60)   return s+"s";
+  if(s<3600) return Math.round(s/60)+"m";
+  if(s<86400)return Math.round(s/3600)+"h";
+  return Math.round(s/86400)+"d";
+}
+function fmtLatency(ms){
+  if(ms==null||isNaN(+ms)) return "–";
+  ms=+ms; return ms<1000 ? ms+"ms" : (ms/1000).toFixed(ms<10000?1:0)+"s";
+}
+function latencyCol(ms){
+  if(ms==null||isNaN(+ms)) return "var(--text-muted)";
+  ms=+ms; return ms>15000 ? "var(--danger)" : ms>5000 ? "var(--warn)" : "var(--text)";
+}
+// Output generation rate for one call: completion tokens / (wall time MINUS queue wait).
+//
+// queue_ms is subtracted because it is time the request spent waiting for a local GPU slot, not
+// time the model spent generating — a 27B that queued 156s and then generated for 4s is not a
+// 3 tok/s model. It is absent (null) on cloud rows, where there is no local gate, so the `||0`
+// leaves those unchanged.
+//
+// ttft_ms is deliberately NOT subtracted, and this was measured rather than assumed: on the
+// non-streamed calls that make up this feed the whole response lands at once, so ttft_ms ≈ ms and
+// subtracting it leaves ~1ms of denominator and prints absurdities (a real row came out at
+// 467,000 tok/s). Streaming rows would want ms-queue-ttft; there are none here to want it.
+//
+// HONEST LIMIT, worth knowing before reading a small number as a slow model: for short outputs
+// this figure is dominated by PROMPT PROCESSING, not generation. A texting call with 5,330 tokens
+// in and 27 out reads as 3.9 tok/s because nearly all of those 7.0s went on ingesting the prompt.
+// The number is "tokens delivered per second of serving time", which is what a caller waits on —
+// not the model's peak decode rate. A 4-token vision caption in 400ms still scores; hiding those
+// (the old floor of 16) left the freelance vision lane as a column of dashes.
+const MIN_TOKENS_FOR_TPS=1;
+function tokPerSec(c){
+  if(!c) return null;
+  if(c.tokens_out==null||c.tokens_out==="") return null;
+  const out=+c.tokens_out, ms=+c.ms;
+  if(!isFinite(out)||!isFinite(ms)||out<MIN_TOKENS_FOR_TPS) return null;
+  const gen=ms-(+c.queue_ms||0);
+  if(!(gen>0)) return null;
+  return out/(gen/1000);
+}
+function fmtTps(c){
+  const v=tokPerSec(c);
+  if(v==null) return '<span style="color:var(--text-muted)" title="'+
+    (c&&c.tokens_out==null
+      ? 'provider did not report output tokens on this call'
+      : 'needs a positive output-token count and a serving time')+
+    '">–</span>';
+  const col = v>=60 ? "var(--ok)" : v>=20 ? "var(--text)" : "var(--warn)";
+  return '<span style="color:'+col+'" title="'+(+c.tokens_out)+' output tokens in '+
+    fmtLatency((+c.ms)-(+c.queue_ms||0))+' of serving time'+
+    ((+c.queue_ms)?(' (excludes '+fmtLatency(+c.queue_ms)+' queued for a local GPU slot)'):'')+
+    ((+c.tokens_out)<16?' — short reply, mostly prompt-processing time, not peak decode':'')+
+    '">'+(v>=100?Math.round(v):v.toFixed(1))+'</span>';
+}
+function costVal(c){ const v=+(c&&c.cost); return isNaN(v)?0:v; }
+function fmtCost(c){
+  const v=costVal(c);
+  if(!v) return '<span style="color:var(--text-muted)">$0</span>';
+  const s = v<0.01 ? ('$'+v.toFixed(5)) : ('$'+v.toFixed(4));
+  return '<span style="color:var(--cloud);font-weight:600">'+s+'</span>';
+}
+function fmtSpend(total){
+  if(!total) return '$0';
+  return total<0.01 ? ('$'+total.toFixed(5)) : ('$'+total.toFixed(total<1?4:2));
+}
+function statusCls(st){
+  const s=+st; if(isNaN(s)) return "st-other";
+  if(s>=500) return "st-bad"; if(s>=400) return "st-warn";
+  if(s>=200&&s<300) return "st-ok"; return "st-other";
+}
+function statusCol(st){
+  const s=+st; if(isNaN(s)) return "var(--text-muted)";
+  if(s>=500) return "var(--danger)"; if(s>=400) return "var(--warn)";
+  if(s>=200&&s<300) return "var(--success)"; return "var(--text-muted)";
+}
+function statusStory(st){
+  const s=+st;
+  if(isNaN(s)) return ["unknown","var(--text-muted)"];
+  if(s===413) return ["413 · payload too large for this provider → failed over","var(--warn)"];
+  if(s===429) return ["429 · rate-limited (pool quota) → router advanced to the next pool","var(--warn)"];
+  if(s>=500) return [s+" · provider error → failed over to the next node","var(--danger)"];
+  if(s>=400) return [s+" · request rejected → failed over","var(--warn)"];
+  if(s>=200&&s<300) return [s+" · served OK","var(--success)"];
+  return [String(st),"var(--text-muted)"];
+}
+
+// The allowlist that decides what a viewer of the public page can see. It is an ALLOWLIST on
+// purpose: the packed feed carries whatever columns the router happens to emit, so a new column
+// added upstream must be admitted deliberately rather than appear on the page by default. That is
+// also how the Tok/s column shipped broken on 2026-08-15 — the router, the pusher and the Supabase
+// payload all carried tokens_out correctly (metrics.stats.recent.cols lists it), and this line
+// silently dropped it one function before tokPerSec() read it, so every cell rendered "–".
+//
+// tokens_in / tokens_out / queue_ms / ttft_ms are COUNTS AND TIMINGS, not content. The redaction
+// this list enforces is of prompt, output and path — the things that carry personal data — and
+// these four reveal nothing about them beyond what `ms` and `cost` already do.
+const LIVE_METADATA_FIELDS=['id','t','caller','requested','model','pool','task','node','mode','status','ms','cost',
+  'tokens_in','tokens_out','queue_ms','ttft_ms'];
+function redactedRecent(rows){
+  if(!Array.isArray(rows))return [];
+  return rows.filter(row=>row&&typeof row==="object").map(row=>{
+    const safe={};
+    for(const field of LIVE_METADATA_FIELDS){
+      if(Object.prototype.hasOwnProperty.call(row,field))safe[field]=row[field];
+    }
+    return safe;
+  });
+}
+
+// stats.recent arrives in TWO shapes and this page reads both. Until 2026-08-05 the pusher sent a
+// plain array of row objects; it now sends a COLUMNAR pack — {v,cols,legend,rows} — where `rows`
+// holds one cell array per call in `cols` order, and any column listed in `legend` stores an INDEX
+// into that legend instead of repeating the string. Measured: the 500-row feed was 161 KB of a
+// 217 KB payload, because 18 key names plus a handful of repeated callers/models/pools were
+// re-spelled on every single row; packed it is 55 KB.
+// Normalising HERE, at the fetch boundary, is deliberate: everything downstream keeps working on
+// row objects and needs no change. Keeping the legacy array branch is what makes the deploy order
+// safe — this page ships first and reads the old shape, so no viewer ever holds a cached page that
+// cannot parse the payload it is being served.
+function unpackRecent(v){
+  if(Array.isArray(v))return v;
+  if(!v||typeof v!=='object'||!Array.isArray(v.cols)||!Array.isArray(v.rows))return [];
+  const cols=v.cols, legend=(v.legend&&typeof v.legend==='object')?v.legend:{};
+  return v.rows.map(cells=>{
+    const row={}, c=Array.isArray(cells)?cells:[];
+    for(let i=0;i<cols.length;i++){
+      const table=legend[cols[i]], cell=c[i];
+      row[cols[i]]=Array.isArray(table)
+        ? ((typeof cell==='number'&&cell>=0&&cell<table.length)?table[cell]:null)
+        : (cell===undefined?null:cell);
+    }
+    return row;
+  });
+}
+
+// ---- data: Supabase live feed ----
+async function poll(){
+  if(polling||document.hidden)return;
+  polling=true;
+  // Every fetch on this path needs its OWN aborter. The snapshot fetch originally had none: the
+  // AbortController above is wired only to the primary, and `polling` latches true until a render
+  // completes, so a fallback that never settles freezes the page permanently with no recovery
+  // short of a manual reload -- the visibilitychange handler calls runPoll() which returns early
+  // on the same latch.
+  async function fetchWithTimeout(url, ms){
+    const c=(typeof AbortController!=='undefined')?new AbortController():null;
+    const t=c?setTimeout(()=>{try{c.abort();}catch(e){}},ms):null;
+    try{ return await fetch(url,{cache:"no-store",signal:c?c.signal:undefined}); }
+    catch(e){ return null; }
+    finally{ if(t)clearTimeout(t); }
+  }
+  let rec;
+  // Function-scoped on purpose: the timestamp line below reads this AFTER the
+  // try/catch, so a `let` inside the try is out of scope there and throws
+  // ReferenceError mid-render -- which is exactly what shipped on 2026-08-19 and
+  // left the page on 'connecting...' with the header half-rendered.
+  let usedSnapshot=false;
+  try{
+    // The abort MUST NOT depend on AbortSignal.timeout existing. `polling` is latched true above,
+    // and every later poll -- including the visibilitychange one -- returns early while it is set.
+    // So a fetch that never settles freezes this page permanently on old numbers, with no error
+    // and no recovery short of a manual reload. AbortSignal.timeout is missing on iOS Safari
+    // before 16.4, and a stalled mobile connection can hang a fetch indefinitely regardless.
+    // Fall back to an explicit controller so there is always something that ends the request.
+    const ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+    const killer=ctl?setTimeout(()=>{try{ctl.abort();}catch(e){}},10000):null;
+    let response;
+    try{
+      response=await fetch(SUPA_URL+"/rest/v1/router_metrics?id=eq.1&select=metrics,updated_at",
+        {headers:{apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY},cache:"no-store",
+         signal:ctl?ctl.signal:undefined});
+      if(!response.ok)throw new Error("metrics HTTP "+response.status);
+    }catch(primaryErr){
+      // FALLBACK to the static snapshot shipped with this page.
+      // The hosted row is a single point of failure and it failed silently: on 2026-08-18 the
+      // Supabase project's hostname began returning NXDOMAIN (deleted, not paused - verified with
+      // getaddrinfo while supabase.co itself resolved), the pusher logged "getaddrinfo failed"
+      // once a minute, and this page showed dashes for every field with no reason given for 33
+      // hours. tools/write_static_metrics.py writes metrics.json in the same envelope, so a dead
+      // hosted store degrades to "stale but readable" instead of blank.
+      usedSnapshot=true;
+      response=await fetchWithTimeout("./metrics.json",8000);
+      if(!response||!response.ok)throw new Error("snapshot HTTP "+(response?response.status:"timeout"));
+    }finally{ if(killer)clearTimeout(killer); }
+    const row=await response.json();
+    rec=(row&&row[0])||{};
+    // A PostgREST 200 with an EMPTY array is `ok`, so the fallback above never fires: rec is {},
+    // age computes to 1e9, usedSnapshot stays false, and the page renders "stale" with no data and
+    // no explanation. Treat an empty/missing row as a failed primary and take the snapshot.
+    if(!usedSnapshot && !rec.updated_at){
+      const alt=await fetchWithTimeout("./metrics.json",8000);
+      if(alt&&alt.ok){ const arow=await alt.json(); const r2=(arow&&arow[0])||{};
+        if(r2.updated_at){ rec=r2; usedSnapshot=true; } }
+    }
+  }catch(e){
+    $('statusDot').style.color='var(--danger)';$('statusDot').setAttribute('aria-label','Router data feed unavailable');
+    $('updated').textContent='no data feed';polling=false;schedulePoll();return;
+  }
+  const m=rec.metrics||{}, stats=m.stats||{};
+  lastRecent=redactedRecent(unpackRecent(stats.recent));
+  lastTrafficToday=(stats.traffic_today&&typeof stats.traffic_today==="object")?stats.traffic_today:{};
+  const age = rec.updated_at? (Date.now()-new Date(rec.updated_at).getTime())/1000 : 1e9;
+  lastAge=age;
+  const stale = age>60;
+  const health=m.health||{};
+  lastReadiness=(health.cloud_readiness&&typeof health.cloud_readiness==="object")?health.cloud_readiness:{};
+  $('statusDot').style.color = stale?'var(--warn-dot)':(health.router==='ok'?'var(--success)':'var(--danger)');
+  $('statusDot').setAttribute('aria-label',stale?'Router data is stale':(health.router==='ok'?'Router is healthy':'Router is down'));
+  // Name the source. A snapshot is always past the 60s stale threshold, so "stale 296s ago"
+  // alone reads as a live feed merely lagging rather than one that is gone. index.html got
+  // this label when the fallback shipped; this page's timestamp line differed and was missed.
+  $('updated').textContent = (rec.updated_at? (stale?'⚠ stale ':'updated ')+Math.round(age)+'s ago' : 'no updated_at — stale')
+    + (usedSnapshot?' · static snapshot (live feed unreachable)':'');
+  $('updated').title = usedSnapshot
+    ? 'The hosted metrics row was unreachable; showing metrics.json shipped with this page.'
+    : 'Served from the live hosted metrics row.';
+  // SAY WHICH CLOCK THIS IS (2026-08-19). This line read "last push Ns ago — pusher daemon may
+  // be down" for ANY stale age, including the snapshot case, and that sent a real investigation
+  // at the wrong component: on 2026-08-19 the operator read "4188s ago — pusher daemon may be
+  // down" while the pusher (PID 7560) was alive and logging every 15s. 4188s was arithmetically
+  // the age of metrics.json (updated_at 06:24:43Z + 4188s = 09:34:31 CEST, the moment the page
+  // was read) — a SNAPSHOT age, not a push age, and metrics.json is written only by
+  // tools/deploy_dashboard.py at deploy time, so it grows without bound by design.
+  // The `updated` line two above already learned this label; the footer never did.
+  $('ageNote').textContent = !rec.updated_at
+    ? 'no timestamp — source unknown'
+    : usedSnapshot
+      ? ('static snapshot, written '+Math.round(age)+'s ago — the LIVE FEED is unreachable '
+         + '(this is the copy shipped with the page; it does not refresh)')
+      : ('last push '+Math.round(age)+'s ago'+(stale?' — the FEED is stale; the router itself may be fine':''));
+  renderSummary();
+  renderFeed();
+  polling=false;schedulePoll();
+}
+
+function runPoll(){poll().catch(()=>{polling=false;$('statusDot').style.color='var(--danger)';$('updated').textContent='render error';schedulePoll();});}
+function schedulePoll(delay=POLL_MS){clearTimeout(pollTimer);if(!document.hidden)pollTimer=setTimeout(runPoll,delay);}
+
+// ---- data: local persistent history (full archive incl. prompt/output previews) ----
+async function fetchHistory(){
+  const requestId=++histRequest;
+  try{
+    const u=new URL(LOCAL+"/history");
+    u.searchParams.set("limit",String(HPAGE));
+    u.searchParams.set("offset",String(histOffset));
+    const sq=serverQuery(); if(sq) u.searchParams.set("q",sq);
+    const response=await fetch(u,{cache:"no-store"});
+    if(!response.ok)throw new Error("history HTTP "+response.status);
+    const j=await response.json();
+    if(requestId!==histRequest)return;
+    histRows=Array.isArray(j.rows)?j.rows:[]; histTotal=+j.total||0; histErr=null;
+  }catch(e){
+    if(requestId!==histRequest)return;
+    histRows=[]; histTotal=0;
+    histErr="local router not reachable from this browser — the History view (full prompts & outputs) only works when this page is opened on the router machine";
+  }
+  renderSummary(); renderFeed();
+}
+
+// ---- requested vs served model -------------------------------------------------------------
+// The archive carries BOTH: `requested` is what the caller asked for (usually an alias like 'main'
+// or a free-pool handle like 'openrouter/free'), `model` is what actually ran. They diverge often —
+// one 'openrouter/free' benchmark this morning was answered by four different models — so showing
+// only one of them hides real routing behaviour. '-' is the router's "not recorded" sentinel.
+function requestedModel(c){
+  const r=(c&&c.requested);
+  return (r==null||r===''||r==='-')?'':String(r);
+}
+function servedModel(c){
+  const m=(c&&c.model);
+  if(m!=null&&m!==''&&m!=='-') return String(m);
+  return requestedModel(c)||'–';
+}
+function modelPair(c){
+  const req=requestedModel(c), served=servedModel(c);
+  return {req, served, differs: !!req && req.toLowerCase()!==served.toLowerCase()};
+}
+function modelCell(c){
+  const mp=modelPair(c);
+  return mp.differs
+    ? `<span class="mreq">${esc(mp.req)}</span><span class="marrow" aria-hidden="true">→</span><span class="mserved">${esc(mp.served)}</span>`
+    : `<span class="mserved">${esc(mp.served)}</span>`;
+}
+function modelTitle(c){
+  const mp=modelPair(c);
+  return mp.differs ? ('requested: '+mp.req+'  →  served: '+mp.served)
+                    : ('requested and served: '+mp.served);
+}
+
+// ---- SEARCH ---------------------------------------------------------------------------------
+// The feed is scanned by EYE first — you notice a band of violet cloud badges or a red latency
+// before you read any text — so colour is a first-class search key here, not a gimmick: every hue
+// a row actually renders is matched by its name. Everything else the row carries is addressable as
+// `field:value`, with comparison operators on the numeric ones. Bare words keep behaving exactly as
+// before (substring across the whole row), so nothing anyone already types stops working.
+
+// The hues are DERIVED from the same class the renderer picks, never hardcoded twice — recolour a
+// badge family in CSS and the only thing that changes is which name finds it here.
+const PROVIDER_HUE={"p-cloud":"violet","p-main":"indigo","p-batch":"indigo","p-levitin":"teal","p-other":"grey"};
+const STATUS_HUE  ={"st-ok":"green","st-warn":"amber","st-bad":"red","st-other":"grey"};
+// Generous synonyms: nobody should have to guess whether the cloud badge is "purple" or "violet".
+const COLOR_ALIASES={
+  violet:'violet',purple:'violet',magenta:'violet',lilac:'violet',
+  indigo:'indigo',blue:'indigo',accent:'indigo',
+  teal:'teal',cyan:'teal',aqua:'teal',turquoise:'teal',
+  green:'green',ok:'green',
+  amber:'amber',yellow:'amber',orange:'amber',
+  red:'red',danger:'red',crimson:'red',
+  grey:'grey',gray:'grey',slate:'grey',neutral:'grey',
+};
+// Every colour this row is currently PAINTED with — badge family, status pill, and the two
+// conditional tints (latency only goes amber/red past its thresholds; cost only tints when > $0).
+function rowColors(c){
+  const s=new Set();
+  s.add(PROVIDER_HUE[providerInfo(c).cls]||'grey');
+  s.add(STATUS_HUE[statusCls(c&&c.status)]||'grey');
+  const ms=+(c&&c.ms);
+  if(!isNaN(ms)){ if(ms>15000) s.add('red'); else if(ms>5000) s.add('amber'); }
+  if(costVal(c)>0) s.add('violet');
+  return s;
+}
+function costText(c){ const v=costVal(c); return v?('$'+(v<0.01?v.toFixed(5):v.toFixed(4))):'$0 free'; }
+
+// field: -> canonical name. Aliases exist because the column header, the tooltip and the mental
+// model rarely agree on one word ("provider" is also "source" is also who "served" it).
+// The caller IS the project — job_application_automation, freelance_automation,
+// android_automation are the things that call this router. 'project' is the name that
+// actually means something to the person reading the feed, so it is a first-class field.
+const UNATTRIBUTED='unattributed';
+// A call arrives unattributed when it carries no X-Caller header and no /c/<caller>/ path
+// prefix. Those rows used to render as a bare '-', which reads as a rendering fault rather
+// than as information; naming them makes them visible AND searchable (project:unattributed).
+function callerName(c){
+  const v=c&&c.caller;
+  return (v==null||v===''||v==='-')?UNATTRIBUTED:String(v);
+}
+const FIELD_ALIASES={
+  caller:'caller',from:'caller',bot:'caller',repo:'caller',
+  project:'caller',proj:'caller',app:'caller',
+  task:'task',route:'task',
+  provider:'provider',prov:'provider',source:'provider',served:'provider',
+  pool:'pool',
+  machine:'machine',host:'machine',box:'machine',
+  model:'model',
+  reqmodel:'reqmodel',requested:'reqmodel',req:'reqmodel',
+  node:'node',mode:'mode',
+  kind:'kind',type:'kind',
+  status:'status',code:'status',http:'status',
+  latency:'latency',ms:'latency',dur:'latency',duration:'latency',took:'latency',
+  cost:'cost',spend:'cost',price:'cost',
+  age:'age',ago:'age',
+  id:'id',
+  color:'color',colour:'color',hue:'color',
+};
+const NUMERIC_FIELDS=new Set(['status','latency','cost','age','id']);
+function fieldValues(c){
+  const p=providerInfo(c), mp=modelPair(c);
+  return {caller:callerName(c), task:c&&c.task, provider:p.short, pool:c&&c.pool, machine:p.long,
+          model:mp.served, reqmodel:mp.req, node:c&&c.node, mode:c&&c.mode,
+          kind:p.cloud?'cloud':'local',
+          status:c&&c.status, latency:c&&c.ms, cost:costVal(c), age:ageS(c&&c.t), id:c&&c.id};
+}
+// Units so the query reads like the column does: latency:>5s beats latency:>5000.
+function numArg(field,raw){
+  const s=String(raw).trim().toLowerCase().replace(/[$,]/g,'');
+  let m;
+  if(field==='latency'){
+    if((m=s.match(/^([\d.]+)ms$/))) return +m[1];
+    if((m=s.match(/^([\d.]+)s$/)))  return +m[1]*1000;
+    if((m=s.match(/^([\d.]+)m$/)))  return +m[1]*60000;
+  }else if(field==='age'){
+    if((m=s.match(/^([\d.]+)s$/)))  return +m[1];
+    if((m=s.match(/^([\d.]+)m$/)))  return +m[1]*60;
+    if((m=s.match(/^([\d.]+)h$/)))  return +m[1]*3600;
+    if((m=s.match(/^([\d.]+)d$/)))  return +m[1]*86400;
+  }
+  const v=+s; return s===''?NaN:(isNaN(v)?NaN:v);   // bare number = ms for latency, seconds for age
+}
+function matchNumeric(field,val,raw){
+  const v=+val;
+  if(val==null||val===''||isNaN(v)) return false;
+  const m=String(raw).match(/^(>=|<=|!=|>|<|=)?\s*(.*)$/);
+  if(!m) return false;
+  const op=m[1]||'=', arg=m[2];
+  if(field==='status'&&/^[1-5]xx$/.test(arg)){          // status:2xx / 4xx / 5xx, as the tiles read
+    const base=+arg[0]*100, inBand=v>=base&&v<base+100;
+    return op==='!='?!inBand:inBand;
+  }
+  const n=numArg(field,arg);
+  if(isNaN(n)) return false;
+  switch(op){
+    case '>':  return v>n;   case '>=': return v>=n;
+    case '<':  return v<n;   case '<=': return v<=n;
+    case '!=': return v!==n; default:   return v===n;
+  }
+}
+// Tokenise into terms: optional leading '-' to negate, optional 'field:', quoted phrases kept whole.
+function parseQuery(q){
+  const terms=[], re=/(-)?(?:([a-zA-Z_]+):)?(?:"([^"]*)"|(\S+))/g;
+  let m;
+  while((m=re.exec(q||''))){
+    const raw=m[2]?m[2].toLowerCase():null;
+    const value=(m[3]!=null?m[3]:(m[4]||'')).toLowerCase();
+    if(!raw&&!value) continue;
+    const field=raw?FIELD_ALIASES[raw]:null;
+    // An unrecognised prefix is NOT silently dropped — it falls back to plain text, so a colon in a
+    // model name ("qwen3.6:27b") still finds its row instead of quietly matching nothing.
+    if(raw&&!field){ terms.push({neg:!!m[1],field:null,value:raw+':'+value}); continue; }
+    terms.push({neg:!!m[1],field,value});
+  }
+  return terms;
+}
+function matchOne(c,field,value){
+  if(field==='color'){ const want=COLOR_ALIASES[value]; return !!want&&rowColors(c).has(want); }
+  const v=fieldValues(c)[field];
+  if(NUMERIC_FIELDS.has(field)) return matchNumeric(field,v,value);
+  return String(v==null?'':v).toLowerCase().includes(value);
+}
+function matchTerm(c,t){
+  // `a|b` inside one term is OR — status:429|500, project:a|b.
+  const parts=t.value.split('|').filter(v=>v!=='');
+  const vals=parts.length?parts:[t.value];
+  const hit=t.field ? vals.some(v=>matchOne(c,t.field,v))
+                    : vals.some(v=>searchHay(c).includes(v));
+  return t.neg?!hit:hit;
+}
+
+// Everything a BARE word matches: raw metadata, the derived provider names (so "Cerebras", "MAIN",
+// "LEVITIN" or "5090" find what the provider column shows), the status story, the formatted latency
+// and cost, and the row's colour names — so typing "violet" alone works without any syntax.
+function searchHay(c){
+  const p=providerInfo(c), mp=modelPair(c);
+  return [callerName(c), c&&c.task, mp.served, mp.req, c&&c.pool, c&&c.mode, c&&c.node,
+          p.short, p.long, p.cloud?'cloud':'local',
+          c&&c.status, statusStory(c&&c.status)[0], fmtLatency(c&&c.ms), costText(c),
+          (c&&c.id!=null)?('#'+c.id):'',
+          c&&c.prompt_preview, c&&c.output_preview,     // history rows only; absent on the live feed
+          [...rowColors(c)].join(' ')].join(' ').toLowerCase();
+}
+
+// History searches FULL prompts/outputs server-side, and the server speaks plain text only — so only
+// the positive bare terms travel. Field terms and negations are applied to the returned page here.
+function serverQuery(){ return parseQuery(SEARCHQ).filter(t=>!t.field&&!t.neg).map(t=>t.value).join(' '); }
+function clientTerms(){
+  return parseQuery(SEARCHQ).filter(t=>SOURCE==="history" ? (t.field||t.neg) : true);
+}
+function passSearch(c){ const t=clientTerms(); return !t.length||t.every(x=>matchTerm(c,x)); }
+
+function activeRows(){
+  const r = SOURCE==="history" ? histRows : lastRecent;
+  return SEARCHQ ? r.filter(passSearch) : r;
+}
+
+function summaryLabels(scope){
+  const suffix=scope==="today"?"today":(scope==="history"?"loaded page":"recent feed");
+  $('lTotal').textContent='calls '+suffix;
+  $('l2xx').textContent='2xx '+suffix; $('l4xx').textContent='4xx '+suffix; $('l5xx').textContent='5xx '+suffix;
+  $('lLocal').textContent='local '+suffix; $('lCloud').textContent='cloud '+suffix;
+  $('lAvg').textContent='avg latency '+suffix; $('lP95').textContent='p95 latency '+suffix;
+  $('lSpend').textContent='spend '+suffix; $('srcLabel').textContent='Providers '+suffix;
+}
+// ---- provider health marker -----------------------------------------------------------------
+// The 2026-08-01 gap this closes: google was 403-blocked by a GCP billing stop from 19:22 and
+// groq's two gpt-oss hops were tokens-per-day exhausted, and this strip cheerfully listed
+// "Google ×471" as the day's top provider. The router fails over transparently, so nothing errored
+// and nothing looked wrong. The count is TRUE and stays exactly as it was; the marker adds the
+// part that was missing. Nothing renders when the router is older than this field (state absent).
+//
+// A BADGE IS ONLY FOR "CANNOT SERVE". The router side only sets state=cooling when the provider
+// genuinely cannot serve (server-wide cooldown, or every hop cooled); ordinary single-hop 429s —
+// 89 of them on 2026-08-01 alone, most sub-minute — stay state=ok, because a marker that is lit
+// most of the time is wallpaper and trains people to ignore the one that matters. Partial
+// degradation is not thrown away: the fraction rides in the provider's own tooltip below.
+//
+// WHAT `blocked` ASSERTS, and therefore what its copy below may say (router gate, 2026-08-04):
+// an auth-class verdict (401/402/403, or a marker-matched 400) stands on this provider's
+// CREDENTIAL and nothing has succeeded on it since. That is ALL it asserts. It does NOT assert
+// that a cooldown is running or that any hop is benched right now — the auth branch writes no
+// per-hop cooldown and its server-wide bench caps at 900s, so `cooling_s` and `hops_cooling` are
+// frequently 0 while this badge is correctly lit. The original copy claimed the failure "is
+// holding every hop on this provider down", false for a measured 44% of the time the badge was up;
+// the copy after that promised the router "keeps re-probing it", false for a pin-only provider
+// nothing routes to — which is exactly the provider that now keeps this badge longest. It also
+// does NOT assert recency: the gate deliberately has no time bound in it (an hour-old window went
+// dark for a median 14% of a real block just because traffic was quiet), so the age of the
+// evidence is reported instead of being used to hide it — `unverified_s` below.
+// AND SINCE 2026-08-04 IT NO LONGER ASSERTS THAT THE VERDICT IS THE NEWEST FAILURE. The gate used
+// to require that too, which let one hop-scoped 429/5xx landing mid-block retire the badge — the
+// provider read `cooling`, then `ok` once that 45s hop bench lapsed, with a live 403 underneath
+// (measured median 3,606s / max 6,225s of that per occurrence on the real GCP dunning block). A
+// failure is never evidence that an account was fixed; only a success is. So `last_error` here may
+// legitimately be a NEWER hop row than the verdict, and the verdict itself arrives beside it as
+// `auth_error`. Keep every clause below derivable from that one conjunct plus those two fields.
+const PST_LABEL={blocked:'blocked',cooling:'cooling'};
+// Past this many seconds without any newer word from the provider, the badge says so rather than
+// letting a month-old 403 look like a live one. MIRRORS router_server._CLOUD_BLOCKED_UNVERIFIED_S,
+// which is sized there against the router's own measured re-check cadence — move both together.
+const PST_UNVERIFIED_S=7200;
+const pstNum=v=>{const x=Number(v);return Number.isFinite(x)?x:0;};
+function providerReadiness(pool){
+  const r=pool?lastReadiness[pool]:null;
+  return (r&&typeof r==='object')?r:null;
+}
+// "2 of 3 hops cooling, 180s left" — the partial-degradation line, shared by the pill's tooltip
+// and (for an otherwise-healthy provider) the provider name's own tooltip.
+function hopsCoolingNote(r){
+  const hops=pstNum(r.hops_cooling), total=pstNum(r.hops_total);
+  if(hops<=0)return '';
+  return hops+' of '+total+' hops cooling'+(pstNum(r.hop_cooling_s)>0?(', '+Math.round(pstNum(r.hop_cooling_s))+'s left'):'')
+         +' — the provider can still serve on its remaining hops';
+}
+// The row the `blocked` badge actually stands on. Since 2026-08-04 a newer hop 429/5xx no longer
+// retires the verdict, so `last_error` (the newest failure on any hop) and the accusation can be
+// two different rows — an operator needs "why is this account accused" as well as "what failed
+// most recently". Prints nothing when they are the same row, which is the common case.
+function authErrorNote(r){
+  const a=(r.auth_error&&typeof r.auth_error==='object')?r.auth_error:null;
+  if(!a)return '';
+  const e=(r.last_error&&typeof r.last_error==='object')?r.last_error:null;
+  if(e&&e.epoch!=null&&a.epoch!=null&&e.epoch===a.epoch)return '';
+  return 'account verdict '+(a.at||'?')+(a.status!=null?(' · HTTP '+a.status):'')+
+         (a.model?(' · '+a.model):'')+(a.detail?(' — '+a.detail):'');
+}
+function lastErrorNote(r){
+  const e=(r.last_error&&typeof r.last_error==='object')?r.last_error:null;
+  if(!e)return '';
+  // detail is blank for providers outside the automatic fallback chain (router-side allowlist:
+  // third-party text is only published for the providers we route to and therefore observe).
+  return 'last error '+(e.at||'?')+(e.status!=null?(' · HTTP '+e.status):'')+
+         (e.model?(' · '+e.model):'')+(e.detail?(' — '+e.detail):'');
+}
+// Provider-name tooltip: the usual long name, plus the partial-degradation line when there is one
+// to report and the provider is NOT already carrying a pill that says it.
+function providerTitle(x){
+  const base=x.long||x.name, r=providerReadiness(x.pool);
+  if(!r)return {title:base, deg:false};
+  const st=String(r.state||'');
+  if(st==='blocked'||st==='cooling')return {title:base, deg:false};
+  const note=hopsCoolingNote(r);
+  return note?{title:base+'\n'+note+(lastErrorNote(r)?('\n'+lastErrorNote(r)):''), deg:true}
+             :{title:base, deg:false};
+}
+function providerStatePill(pool){
+  const r=providerReadiness(pool);
+  if(!r)return '';
+  const st=String(r.state||'');
+  if(st!=='blocked'&&st!=='cooling')return '';
+  const why=[st==='blocked'
+    ? 'BLOCKED — an auth-class refusal (401/402/403) stands on this provider\'s credential and nothing has succeeded on it since. A newer 429 or 5xx is not evidence the account was fixed and does not retire this — only a success does, so the last error below may be a newer hop failure than the verdict. Auth-class failures do NOT clear themselves; an account needs fixing. The badge never keeps a hop out of the chain, so no hop is necessarily benched right now, and the next request that reaches this provider re-tests the account.'
+    : 'COOLING — this provider cannot serve right now; the router is skipping it until its cooldown expires. Self-healing.'];
+  // The verdict stands on evidence nobody has re-checked. It stays lit — only a success can retire
+  // it, and a success cannot arrive without an attempt — but it says so. The number is the AUTH
+  // row's age, so hop traffic landing meanwhile does not reset it: a 429 is not a re-check.
+  const unv=st==='blocked'?pstNum(r.unverified_s):0, unverified=unv>PST_UNVERIFIED_S;
+  if(unverified)why.push('UNVERIFIED — the account has not been re-tested for '+fmtSpan(unv)+' (a hop 429 or 5xx is not a re-test), so this verdict is the newest thing the router knows about the credential, not a live observation.');
+  if(pstNum(r.cooling_s)>0)why.push('server-wide cooldown '+Math.round(pstNum(r.cooling_s))+'s left');
+  const hops=pstNum(r.hops_cooling), total=pstNum(r.hops_total);
+  if(hops>0)why.push(hops+' of '+total+' hops cooling'+(pstNum(r.hop_cooling_s)>0?(', '+Math.round(pstNum(r.hop_cooling_s))+'s left'):''));
+  const acc=authErrorNote(r);
+  if(acc)why.push(acc);
+  const err=lastErrorNote(r);
+  if(err)why.push(err);
+  const label=PST_LABEL[st]+(unverified?(' · unverified '+fmtSpan(unv)):'');
+  return `<span class="pst pst-${st}" title="${esc(why.join('\n'))}">${esc(label)}</span>`;
+}
+function renderSourceCounts(entries){
+  const sorted=entries.filter(x=>x&&x.n>0).sort((a,b)=>b.n-a.n);
+  $('srcBreakList').innerHTML = sorted.length
+    ? sorted.map(x=>{
+        const col=PROVIDER_COL[x.cls]||'var(--text-muted)';
+        const t=providerTitle(x);
+        return `<span class="${t.deg?'pdeg':''}" style="color:${col};font-weight:600" title="${esc(t.title)}">${esc(x.name)}</span> <span class="muted">×${x.n}</span>${providerStatePill(x.pool)}`;
+      }).join(' <span class="muted">·</span> ')
+    : '<span class="muted">–</span>';
+}
+function renderTodaySummary(){
+  const summary=lastTrafficToday&&lastTrafficToday.summary;
+  if(!summary||!Object.prototype.hasOwnProperty.call(summary,'requests'))return false;
+  const n=(v,d=0)=>{const x=Number(v);return Number.isFinite(x)?x:d;};
+  summaryLabels('today');
+  $('sTotal').textContent=n(summary.requests);
+  $('s2xx').textContent=n(summary['2xx']); $('s4xx').textContent=n(summary['4xx']); $('s5xx').textContent=n(summary['5xx']);
+  $('sLocal').textContent=n(summary.local); $('sCloud').textContent=n(summary.cloud);
+  $('sSpend').textContent=fmtSpend(n(summary.cost_usd));
+  $('sAvg').textContent=fmtLatency(summary.avg_ms); $('sP95').textContent=fmtLatency(summary.p95_ms);
+  $('sAvg').style.color=latencyCol(summary.avg_ms); $('sP95').style.color=latencyCol(summary.p95_ms);
+  const combined=new Map();
+  for(const source of (Array.isArray(lastTrafficToday.sources)?lastTrafficToday.sources:[])){
+    const p=providerInfo(source), key=(p.cloud?'c:':'l:')+p.short;
+    const count=Math.max(0,n(source&&source.count));
+    const old=combined.get(key);
+    // pool = the RAW router pool key ("google", "ollama-cloud"), kept alongside the display name
+    // so the health marker can look the provider up in health.cloud_readiness. Local nodes have
+    // no cloud pool and therefore never carry a marker.
+    combined.set(key,{name:p.short,long:p.long,cls:p.cls,pool:poolKey(source),n:(old?old.n:0)+count});
+  }
+  renderSourceCounts([...combined.values()]);
+  return true;
+}
+// Median, not mean, and deliberately: one 4-token vision reply or one 1,733-token agentic answer
+// drags a mean around by an order of magnitude, and this tile is meant to answer "how fast is the
+// fleet generating right now", not "what did the biggest call do".
+//
+// It is always computed from the loaded FEED rows even when the counters beside it read "today",
+// because the router's traffic_today summary carries no per-call token figures — only the newest
+// 500 records do. The label says so rather than letting the tile imply a day-wide number.
+function renderTpsTile(rows,scopeNote){
+  const vals=[];
+  for(const c of rows){ const v=tokPerSec(c); if(v!=null) vals.push(v); }
+  const el=$('sTps'), lab=$('lTps');
+  if(!el) return;
+  if(!vals.length){
+    el.textContent='–'; el.style.color='var(--text-muted)';
+    if(lab) lab.textContent='median output tok/s';
+    return;
+  }
+  vals.sort((a,b)=>a-b);
+  const mid=vals.length%2 ? vals[(vals.length-1)/2]
+                          : (vals[vals.length/2-1]+vals[vals.length/2])/2;
+  el.textContent = mid>=100 ? String(Math.round(mid)) : mid.toFixed(1);
+  el.style.color = mid>=60 ? 'var(--ok)' : mid>=20 ? 'var(--text)' : 'var(--warn)';
+  el.title = vals.length+' calls with at least '+MIN_TOKENS_FOR_TPS+' output tokens; '+
+             'slowest '+vals[0].toFixed(1)+', fastest '+vals[vals.length-1].toFixed(1);
+  if(lab) lab.textContent='median output tok/s'+(scopeNote?(' · '+scopeNote):'');
+}
+function renderSummary(){
+  if(SOURCE==="live"&&renderTodaySummary()){
+    renderTpsTile(activeRows(),'last '+activeRows().length+' calls');
+    return;
+  }
+  const set=activeRows().filter(passFilter);
+  let o2=0,e4=0,e5=0,loc=0,cld=0,spend=0; const lat=[];
+  const srcCount=new Map();
+  for(const c of set){
+    const s=+((c&&c.status));
+    if(!isNaN(s)){ if(s>=500)e5++; else if(s>=400)e4++; else if(s>=200&&s<300)o2++; }
+    if(isCloud(c)) cld++; else loc++;
+    spend += costVal(c);
+    const p=providerInfo(c), old=srcCount.get(p.short);
+    srcCount.set(p.short,{name:p.short,long:p.long,cls:p.cls,pool:poolKey(c),n:(old?old.n:0)+1});
+    const ms=+(c&&c.ms); if(!isNaN(ms)) lat.push(ms);
+  }
+  summaryLabels(SOURCE==="history"?'history':'feed');
+  $('sTotal').textContent=set.length;
+  $('s2xx').textContent=o2; $('s4xx').textContent=e4; $('s5xx').textContent=e5;
+  $('sLocal').textContent=loc; $('sCloud').textContent=cld;
+  $('sSpend').textContent=fmtSpend(spend);
+  renderSourceCounts([...srcCount.values()]);
+  lat.sort((a,b)=>a-b);
+  const avg=lat.length?lat.reduce((a,b)=>a+b,0)/lat.length:null;
+  const p95=lat.length?lat[Math.max(0,Math.ceil(lat.length*0.95)-1)]:null;
+  $('sAvg').textContent=fmtLatency(avg); $('sP95').textContent=fmtLatency(p95);
+  $('sAvg').style.color=latencyCol(avg); $('sP95').style.color=latencyCol(p95);
+  renderTpsTile(set,null);
+}
+
+function passType(c){
+  if(TYPE==="errors") return (+((c&&c.status)))>=400;
+  if(TYPE==="cloud")  return providerInfo(c).cloud;
+  if(TYPE==="local")  return !providerInfo(c).cloud;
+  if(TYPE==="slow")   return (+(c&&c.ms))>5000;
+  return true;
+}
+function passWin(c){ return WIN<=0 ? true : ageS(c&&c.t)<=WIN; }
+
+// ---- facet (per-column) filters --------------------------------------------------------------
+// A pivot-style dropdown per column: every value the loaded rows actually contain, with its count,
+// multi-select. Within one facet the selections are OR'd; across facets they are AND'd — the
+// behaviour people expect from a spreadsheet/BI filter.
+// Counts are computed against rows passing every OTHER facet (true faceted search), so a number
+// always answers "how many more rows would I get by ticking this", and options that can no longer
+// contribute show 0 rather than vanishing — a disappearing list is disorienting mid-filter.
+const FACETS=[
+  {key:'caller',   label:'Project',  get:c=>callerName(c)},
+  {key:'task',     label:'Task',     get:c=>String((c&&c.task)||'—')},
+  {key:'provider', label:'Provider', get:c=>providerInfo(c).short},
+  {key:'model',    label:'Model',    get:c=>modelPair(c).served||'—'},
+  {key:'status',   label:'Status',   get:c=>{const s=+(c&&c.status);
+      return isNaN(s)?'unknown':(s>=500?'5xx':s>=400?'4xx':s>=200&&s<300?'2xx':String(s));}},
+  {key:'node',     label:'Node',     get:c=>providerInfo(c).cloud?'cloud':'local'},
+];
+let FACET_RENDERING=false;                // re-entry guard: renderFeed rebuilds the bar, handlers too
+const FACET_SEL={};                       // key -> Set of chosen values (empty set = no constraint)
+FACETS.forEach(f=>{FACET_SEL[f.key]=new Set();});
+const facetActive=()=>FACETS.filter(f=>FACET_SEL[f.key].size);
+function passFacetsExcept(c,skipKey){
+  for(const f of FACETS){
+    if(f.key===skipKey) continue;
+    const sel=FACET_SEL[f.key];
+    if(sel.size && !sel.has(f.get(c))) return false;
+  }
+  return true;
+}
+const passFacets=c=>passFacetsExcept(c,null);
+
+function passFilter(c){ return passType(c) && passWin(c) && passFacets(c); }
+
+function detailLink(c, txt){
+  if(c.id==null||!CAN_LOCAL_HISTORY) return '';
+  return `<a class="dlink" href="detail.html?id=${encodeURIComponent(c.id)}" target="_blank" rel="noopener" `+
+         `aria-label="Open full query and output for call ${esc(c.id)}" title="open the exact query & output in a new tab">${txt||'↗'}</a>`;
+}
+
+function detailRow(c){
+  const p=providerInfo(c);
+  const [story,scol]=statusStory(c.status);
+  const mp=modelPair(c);
+  const f=(k,v)=>`<div class="dd-f"><span class="dd-k">${k}</span><span class="dd-v">${v}</span></div>`;
+  const hasPrev = (c.prompt_preview!=null || c.output_preview!=null);
+  const prev = hasPrev ? `
+      <div class="dd-chain">
+        <div class="dd-k" style="margin-bottom:4px">Query ${c.prompt_len>220?'(first 220 of '+c.prompt_len+' chars — open ↗ for all)':''}</div>
+        <div class="dd-pre">${esc(c.prompt_preview||'—')}</div>
+        <div class="dd-k" style="margin:10px 0 4px">Output ${c.output_len>220?'(first 220 of '+c.output_len+' chars — open ↗ for all)':''}</div>
+        <div class="dd-pre">${esc(c.output_preview||'—')}</div>
+      </div>` : '';
+  return `<tr class="detail"><td colspan="11"><div class="dd">
+      <div class="dd-story">${providerBadge(c)}
+        <span style="color:${scol};font-weight:600">${esc(story)}</span>
+        ${c.id!=null?'<span style="margin-left:auto">'+detailLink(c,'open full query &amp; output ↗')+'</span>':''}</div>
+      <div class="dd-grid">
+        ${f('Project', esc(callerName(c)))}
+        ${f('Task', esc(c.task||'–'))}
+        ${f('Provider', '<b>'+esc(p.short)+'</b>')}
+        ${f(p.cloud?'Cloud pool':'Machine', esc(p.long))}
+        ${f('Requested model', esc(mp.req||'–'))}
+        ${f('Served model', esc(mp.served))}
+        ${f('Router node', esc(c.node||'–'))}
+        ${f('Mode', esc(c.mode||'–'))}
+        ${f('Status', esc(String(c.status==null?'–':c.status)))}
+        ${f('Latency', esc(fmtLatency(c.ms)))}${f('Output tok/s', fmtTps(c))}${c.tokens_out!=null?f('Tokens', esc((c.tokens_in==null?'?':c.tokens_in)+' in / '+c.tokens_out+' out')):''}${c.queue_ms?f('Queued for a local GPU slot', esc(fmtLatency(c.queue_ms))):''}
+        ${f('Cost', costVal(c)?fmtCost(c):'<span style="color:var(--text-muted)">$0 (free)</span>')}
+        ${f('When', esc(fmtFull(c.t))+' · '+esc(relAgo(c.t)))}
+      </div>${prev}</div></td></tr>`;
+}
+
+function renderFeed(){
+  const feed=$('feed');
+  // Refresh the facet value lists + counts from the current data. Guarded because renderFeed is
+  // also called FROM the facet handlers, which have already rebuilt the bar.
+  if(typeof buildFacetBar==='function' && !FACET_RENDERING){
+    FACET_RENDERING=true; try{ buildFacetBar(); } finally { FACET_RENDERING=false; }
+  }
+  const base=activeRows();
+  $('feedTitle').innerHTML = SOURCE==="history"
+    ? 'Query history <span class="muted feed-help" style="text-transform:none;letter-spacing:0">· loaded page from the private archive · select a call to expand</span>'
+    : 'Persistent recent feed <span class="muted feed-help" style="text-transform:none;letter-spacing:0">· newest 500 completed calls · prompt/output/path removed · select a call to expand</span>';
+  $('hPrev').style.display = SOURCE==="history" ? '' : 'none';
+  $('hNext').style.display = SOURCE==="history" ? '' : 'none';
+  $('hPrev').disabled=histOffset<=0;
+  $('hNext').disabled=histOffset+HPAGE>=histTotal;
+  if(openRows.size){ const live=new Set(base.map(rowKey)); for(const k of [...openRows]) if(!live.has(k)) openRows.delete(k); }
+  if(SOURCE==="history" && histErr){
+    feed.innerHTML='<tr><td colspan="11"><div class="empty">'+esc(histErr)+'</div></td></tr>';
+    $('showMore').style.display='none';
+    $('shown').textContent=''; return;
+  }
+  if(!base.length){
+    const msg = SOURCE==="history"
+      ? (SEARCHQ ? 'no history entries match "'+SEARCHQ+'"' : 'history is empty — it fills as calls flow (capture started when the history feature was deployed)')
+      : (SEARCHQ ? 'no persistent recent metadata matches "'+SEARCHQ+'" — switch Source to History to search full prompts & outputs'
+                 : 'the persistent recent metadata feed is empty — it fills as completed calls arrive');
+    feed.innerHTML='<tr><td colspan="11"><div class="empty">'+esc(msg)+'</div></td></tr>';
+    $('showMore').style.display='none';
+    if(SOURCE==="history"){
+      $('shown').textContent='0 on loaded page · '+histTotal+' '+(SEARCHQ?'archive matches':'archive entries');
+    }else{
+      const today=Number(lastTrafficToday&&lastTrafficToday.summary&&lastTrafficToday.summary.requests);
+      $('shown').textContent='0 matching · '+lastRecent.length+' persistent recent'+(Number.isFinite(today)?(' · '+today+' calls today'):'');
+    }
+    return;
+  }
+  const rows=base.filter(passFilter);
+  const visibleRows=rows.slice(0,liveVisible);
+  if(SOURCE==="history"){
+    const loaded=histRows.length, filtered=rows.length!==loaded;
+    $('shown').textContent=(filtered?(rows.length+' matching filters · '+loaded+' loaded'):(loaded+' on loaded page'))+
+      ' · '+histTotal+' '+(SEARCHQ?'archive matches':'archive entries')+' · page '+(Math.floor(histOffset/HPAGE)+1);
+  }else{
+    const narrowed=!!SEARCHQ||TYPE!=="all"||WIN>0;
+    const today=Number(lastTrafficToday&&lastTrafficToday.summary&&lastTrafficToday.summary.requests);
+    $('shown').textContent='showing '+visibleRows.length+' of '+(narrowed?(rows.length+' matching · '):'')+
+      lastRecent.length+' persistent recent'+(Number.isFinite(today)?(' · '+today+' calls today'):'');
+  }
+  const more=visibleRows.length<rows.length;
+  $('showMore').style.display=more?'block':'none';
+  $('showMore').textContent=more?('Show '+Math.min(PAGE_BATCH,rows.length-visibleRows.length)+' more · '+(rows.length-visibleRows.length)+' remaining'):'';
+  armAutoGrow(more);
+  const allOpen=visibleRows.length && visibleRows.every(c=>openRows.has(rowKey(c)));
+  $('expandAll').textContent = allOpen ? '⊖ Collapse all' : '⊕ Expand all';
+  if(!rows.length){
+    const w = WIN>0 ? (' in the last '+(WIN>=3600?(WIN/3600+'h'):(WIN/60+'m'))) : '';
+    const what = TYPE==="errors" ? "no errors"+w+" — recent calls succeeded"
+               : TYPE==="cloud"  ? "no cloud calls"+w+" — the local machines handled everything"
+               : TYPE==="local"  ? "no local calls"+w
+               : TYPE==="slow"   ? "no calls slower than 5s"+w
+               : "no calls"+w;
+    feed.innerHTML='<tr><td colspan="11"><div class="empty">'+esc(what)+'</div></td></tr>';
+    $('showMore').style.display='none';
+    return;
+  }
+  let html='';
+  for(const [rowIndex,c] of visibleRows.entries()){
+    const st=c.status, stTxt=(st==null||st==="")?'–':esc(st);
+    const caller=esc(callerName(c));
+    const task=(c.task==null||c.task==='')?'–':esc(c.task);
+    const mode=(c.mode&&c.mode!=='failover')?`<span class="sep">·</span><span class="mode">${esc(c.mode)}</span>`:'';
+    const k=rowKey(c), isOpen=openRows.has(k);
+    const detailId='call-detail-'+rowIndex;
+    html+=`<tr class="call${isOpen?' open':''}${rowIndex%2?' alt':''}" data-k="${esc(k)}">
+      <td><button class="toggle" type="button" aria-expanded="${isOpen?'true':'false'}" aria-controls="${detailId}" aria-label="${isOpen?'Collapse':'Expand'} call details"><span class="caret${isOpen?' open':''}" aria-hidden="true">▶</span></button></td>
+      <td><span class="mono">${esc(fmtClock(c.t))}</span> <span class="rel">${esc(relAgo(c.t))}</span></td>
+      <td><b>${caller}</b></td>
+      <td>${task}</td>
+      <td>${providerBadge(c)}${mode}</td>
+      <td class="mono" style="max-width:300px;overflow:hidden;text-overflow:ellipsis"><span title="${esc(modelTitle(c))}">${modelCell(c)}</span></td>
+      <td class="num"><span class="st ${statusCls(st)}">${stTxt}</span></td>
+      <td class="num" style="color:${latencyCol(c.ms)}">${esc(fmtLatency(c.ms))}</td>
+      <td class="num mono">${fmtTps(c)}</td>
+      <td class="num">${fmtCost(c)}</td>
+      <td class="num">${detailLink(c)}</td>
+    </tr>`;
+    if(isOpen) html+=detailRow(c).replace('<tr class="detail">',`<tr class="detail" id="${detailId}">`);
+  }
+  feed.innerHTML=html;
+}
+
+// expand/collapse on row click (event delegation; survives refresh via openRows set)
+$('feed').addEventListener('click',e=>{
+  if(e.target.closest('a')) return;             // links (detail ↗) navigate, not toggle
+  const tr=e.target.closest('tr.call');
+  if(!tr) return;
+  const k=tr.getAttribute('data-k');
+  if(openRows.has(k)) openRows.delete(k); else openRows.add(k);
+  renderFeed();
+});
+// filter buttons — client-side, no reload
+document.querySelectorAll('.fbtn[data-type]').forEach(b=>b.addEventListener('click',()=>{
+  TYPE=b.getAttribute('data-type');
+  liveVisible=PAGE_BATCH;
+  document.querySelectorAll('.fbtn[data-type]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});
+  renderSummary();renderFeed();
+}));
+document.querySelectorAll('.fbtn[data-win]').forEach(b=>b.addEventListener('click',()=>{
+  WIN=+b.getAttribute('data-win');
+  liveVisible=PAGE_BATCH;
+  document.querySelectorAll('.fbtn[data-win]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});
+  renderSummary();renderFeed();
+}));
+// source toggle: persistent redacted last-100 vs local private archive
+document.querySelectorAll('.fbtn[data-src]').forEach(b=>b.addEventListener('click',async()=>{
+  if(b.disabled)return;
+  if(b.getAttribute('data-src')==="history"&&!CAN_LOCAL_HISTORY){
+    if(!await probeLocalHistory())return;
+  }
+  SOURCE=b.getAttribute('data-src');
+  liveVisible=PAGE_BATCH;
+  document.querySelectorAll('.fbtn[data-src]').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});
+  $('searchHelp').textContent=SOURCE==="history"?'History searches full prompts and outputs.':'Live searches the newest 500 persistent metadata records.';
+  $('q').placeholder=SOURCE==="history"
+    ?'prompts & outputs — plus project:… · status:5xx · latency:>5s · task:…'
+    :'anything — project:job_application · status:5xx · latency:>5s · task:agentic -cloud';
+  if(SOURCE==="history"){
+    histOffset=0; fetchHistory();
+    if(!histTimer) histTimer=setInterval(()=>{ if(!document.hidden&&SOURCE==="history"&&!histOffset) fetchHistory(); },30000);
+  }else if(histTimer){
+    clearInterval(histTimer);histTimer=null;histRequest++;
+  }
+  renderSummary(); renderFeed();
+}));
+// history paging
+$('hPrev').addEventListener('click',()=>{ histOffset=Math.max(0,histOffset-HPAGE); fetchHistory(); });
+$('hNext').addEventListener('click',()=>{ if(histOffset+HPAGE<histTotal){ histOffset+=HPAGE; fetchHistory(); } });
+// search — debounced; in History mode it searches FULL prompts+outputs server-side,
+// in Live mode it filters the visible feed's metadata client-side
+let qT=null;
+$('q').addEventListener('input',()=>{
+  clearTimeout(qT);
+  qT=setTimeout(()=>{
+    SEARCHQ=$('q').value.trim();
+    liveVisible=PAGE_BATCH;
+    if(SOURCE==="history"){ histOffset=0; fetchHistory(); }
+    else { renderSummary(); renderFeed(); }
+  },300);
+});
+// ---- search syntax reference ------------------------------------------------------------------
+// The swatches are painted from the SAME custom properties the badges use, so the legend re-tints
+// itself on the theme toggle with no JS and can never drift from what the feed actually shows.
+const HUE_LEGEND=[
+  ['violet','var(--cloud)',        'cloud provider · cost above $0'],
+  ['indigo','var(--accent-strong)','MAIN (RTX 5090) · MAIN·batch'],
+  ['teal',  'var(--host-b)',       'LEVITIN (RTX 3070)'],
+  ['green', 'var(--success)',      '2xx served OK'],
+  ['amber', 'var(--warn)',         '4xx rejected · latency over 5s'],
+  ['red',   'var(--danger)',       '5xx provider error · latency over 15s'],
+  ['grey',  'var(--stop)',         'node or status not reported'],
+];
+const QUERY_EXAMPLES=[
+  'project:job_application_automation','project:unattributed','project:freelance_automation',
+  'status:5xx','status:429','latency:>5s','latency:<1s','cost:>0','age:<15m',
+  'kind:cloud','-cloud','provider:cerebras','task:agentic','model:gpt-oss',
+  'project:job_application -task:classify',
+];
+function setQuery(text){
+  const box=$('q');
+  box.value=text; SEARCHQ=text;
+  liveVisible=PAGE_BATCH;
+  if(SOURCE==="history"){ histOffset=0; fetchHistory(); } else { renderSummary(); renderFeed(); }
+  box.focus();
+}
+function buildSyntaxHelp(){
+  $('qsLegend').innerHTML=HUE_LEGEND.map(([name,col,what])=>
+    `<button type="button" class="qs-chip" data-q="color:${name}" title="${esc(what)}">`+
+    `<span class="swatch" style="background:${col}"></span>${name}</button>`).join('');
+  $('qsEx').innerHTML=QUERY_EXAMPLES.map(q=>
+    `<button type="button" class="qs-chip" data-q="${esc(q)}">${esc(q)}</button>`).join('');
+  $('qsyntax').addEventListener('click',e=>{
+    const chip=e.target.closest('.qs-chip'); if(chip) setQuery(chip.getAttribute('data-q'));
+  });
+}
+buildSyntaxHelp();
+
+// ---- facet dropdowns ---------------------------------------------------------------------------
+// Built once; contents re-render from live data every poll so counts stay honest. The open panel is
+// preserved across re-renders (openFacet), otherwise the 15s refresh would close it under your hand.
+let openFacet=null, facetQuery={};
+function facetValues(f){
+  // rows in scope for THIS facet = everything passing type/window/search and the OTHER facets
+  const base=activeRows().filter(c=>passType(c)&&passWin(c)&&passFacetsExcept(c,f.key));
+  const counts=new Map();
+  for(const c of base){ const v=f.get(c); counts.set(v,(counts.get(v)||0)+1); }
+  for(const v of FACET_SEL[f.key]) if(!counts.has(v)) counts.set(v,0);   // keep chosen-but-empty visible
+  return [...counts.entries()].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])));
+}
+function buildFacetBar(){
+  const bar=$('facetBar'), clear=$('facetClear');
+  for(const f of FACETS){
+    let el=document.getElementById('facet-'+f.key);
+    if(!el){
+      el=document.createElement('span');
+      el.className='facet'; el.id='facet-'+f.key;
+      el.innerHTML=`<button class="fbtn" data-facet="${f.key}" aria-haspopup="true" aria-expanded="false">`+
+        `<span>${esc(f.label)}</span><span class="fcount" data-n hidden></span><span class="caretdown">▼</span></button>`+
+        `<div class="fpanel"><div class="fpanel-head">`+
+        `<input type="search" placeholder="filter ${esc(f.label.toLowerCase())}…" data-q="${f.key}" autocomplete="off">`+
+        `<button class="fpanel-act" data-all="${f.key}">All</button>`+
+        `<button class="fpanel-act" data-none="${f.key}">None</button></div>`+
+        `<ul class="flist" data-list="${f.key}"></ul></div>`;
+      bar.insertBefore(el,clear);
+    }
+    const sel=FACET_SEL[f.key], badge=el.querySelector('[data-n]');
+    badge.textContent=sel.size; badge.hidden=!sel.size;
+    el.querySelector('button[data-facet]').classList.toggle('active',!!sel.size);
+    el.classList.toggle('open',openFacet===f.key);
+    el.querySelector('button[data-facet]').setAttribute('aria-expanded',String(openFacet===f.key));
+    const list=el.querySelector('[data-list]'), q=(facetQuery[f.key]||'').toLowerCase();
+    const vals=facetValues(f).filter(([v])=>!q||String(v).toLowerCase().includes(q));
+    list.innerHTML = vals.length ? vals.map(([v,n])=>{
+      const on=sel.has(v);
+      return `<li class="${on?'on':''}${n===0?' zero':''}" data-v="${esc(v)}" data-f="${f.key}">`+
+             `<input type="checkbox" ${on?'checked':''} tabindex="-1"><span class="fname" title="${esc(v)}">${esc(v)}</span>`+
+             `<span class="fn">${n}</span></li>`;
+    }).join('') : '<div class="fempty">no matching values</div>';
+  }
+  clear.style.display=facetActive().length?'':'none';
+}
+// One delegated listener on the bar: buttons, checkboxes and the search box all route through here,
+// so re-rendering the panel never orphans a handler.
+$('facetBar').addEventListener('click',e=>{
+  const btn=e.target.closest('button[data-facet]');
+  if(btn){ const k=btn.getAttribute('data-facet'); openFacet=(openFacet===k)?null:k; buildFacetBar(); return; }
+  const all=e.target.closest('[data-all]'), none=e.target.closest('[data-none]');
+  if(all||none){
+    const f=FACETS.find(x=>x.key===(all||none).getAttribute(all?'data-all':'data-none'));
+    const sel=FACET_SEL[f.key]; sel.clear();
+    if(all){ const q=(facetQuery[f.key]||'').toLowerCase();
+      facetValues(f).filter(([v])=>!q||String(v).toLowerCase().includes(q)).forEach(([v])=>sel.add(v)); }
+    liveVisible=PAGE_BATCH; buildFacetBar(); renderSummary(); renderFeed(); return;
+  }
+  const li=e.target.closest('li[data-v]');
+  if(li){
+    const sel=FACET_SEL[li.getAttribute('data-f')], v=li.getAttribute('data-v');
+    sel.has(v)?sel.delete(v):sel.add(v);
+    liveVisible=PAGE_BATCH; buildFacetBar(); renderSummary(); renderFeed(); return;
+  }
+  if(e.target.id==='facetClear'){
+    FACETS.forEach(f=>FACET_SEL[f.key].clear()); openFacet=null; facetQuery={};
+    liveVisible=PAGE_BATCH; buildFacetBar(); renderSummary(); renderFeed();
+  }
+});
+$('facetBar').addEventListener('input',e=>{
+  const box=e.target.closest('input[data-q]');
+  if(box){ facetQuery[box.getAttribute('data-q')]=box.value; buildFacetBar();
+           const again=document.querySelector(`input[data-q="${box.getAttribute('data-q')}"]`);
+           if(again){ again.focus(); again.setSelectionRange(again.value.length,again.value.length); } }
+});
+document.addEventListener('click',e=>{ if(openFacet && !e.target.closest('.facet')){ openFacet=null; buildFacetBar(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&openFacet){ openFacet=null; buildFacetBar(); } });
+
+// expand/collapse ALL currently-shown rows at once
+$('expandAll').addEventListener('click',()=>{
+  const shown=activeRows().filter(passFilter);
+  const allOpen=shown.length && shown.every(c=>openRows.has(rowKey(c)));
+  if(allOpen) openRows.clear(); else shown.forEach(c=>openRows.add(rowKey(c)));
+  renderFeed();
+});
+$('showMore').addEventListener('click',()=>{liveVisible+=PAGE_BATCH;renderFeed();});
+
+// ---- infinite scroll ---------------------------------------------------------------------------
+// The Show-more button watches itself: when it scrolls into view, the window grows. Two details
+// matter. (1) It only fires while the button is actually displayed, so a fully-rendered feed
+// arms nothing. (2) Growth happens on the next frame, because renderFeed() runs INSIDE this
+// callback's turn and re-entering the observer synchronously would loop.
+// The 15s poll re-renders continuously, so liveVisible is deliberately NOT reset on refresh —
+// scrolled-open depth survives a refresh and you keep your place while new calls land on top.
+let feedObserver=null, growing=false;
+function armAutoGrow(hasMore){
+  if(!('IntersectionObserver' in window)) return;    // button still works; this is enhancement only
+  if(!feedObserver){
+    feedObserver=new IntersectionObserver(entries=>{
+      if(growing||!entries.some(e=>e.isIntersecting)) return;
+      const rows=activeRows().filter(passFilter);
+      if(liveVisible>=rows.length) return;
+      growing=true;
+      requestAnimationFrame(()=>{ liveVisible+=PAGE_BATCH; renderFeed(); growing=false; });
+    },{rootMargin:'600px 0px'});                      // start loading before it reaches the viewport
+  }
+  const btn=$('showMore');
+  feedObserver.disconnect();
+  if(hasMore) feedObserver.observe(btn);
+}
+
+function setHistoryAvailability(ok,canRequest=false,failed=false){
+  CAN_LOCAL_HISTORY=!!ok;
+  $('historyBtn').disabled=!ok&&!canRequest;
+  $('historyBtn').textContent=ok?'History':(canRequest?'Connect history':'History');
+  $('historyBtn').title=ok?'Persistent router history':(canRequest?'Request access to private history on this computer':'History is unavailable on the phone view');
+  $('historyNote').textContent=failed
+    ? 'Could not reach the router history. Allow Local Network Access for this site, then try Connect history again.'
+    : 'Full prompt/output history stays on the router computer; this phone shows the persistent recent feed as redacted metadata only.';
+  $('historyNote').style.display=(failed||(!ok&&!canRequest))?'block':'none';
+  if(lastRecent.length)renderFeed();
+}
+async function probeLocalHistory(){
+  if(CAN_LOCAL_HISTORY)return true;
+  $('historyBtn').disabled=true;$('historyBtn').textContent='Connecting…';
+  try{
+    const signal=(typeof AbortSignal!=='undefined'&&AbortSignal.timeout)?AbortSignal.timeout(30000):undefined;
+    const response=await fetch(LOCAL+'/history?limit=1&offset=0',{cache:'no-store',signal});
+    const body=await response.json();
+    const ok=response.ok&&Array.isArray(body.rows);setHistoryAvailability(ok,true,!ok);return ok;
+  }catch(e){setHistoryAvailability(false,true,true);return false;}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)clearTimeout(pollTimer);else runPoll();
+});
+setHistoryAvailability(false,!PHONE);
+runPoll();
+</script>
+</body>
+</html>
