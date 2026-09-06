@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="LLM Router">
+  <!-- Router device: body, link LEDs, two antennae. Replaces the fan-out mark on 2026-08-16 at the
+       user's request ("there's a router icon for it"). Same mark as logo.svg and the in-page .logo
+       tile; those two are derived from THIS geometry so the three cannot drift apart.
+
+       DRAWN FOR 16px FIRST, not for this 32px view. A browser tab renders the favicon at 16, so
+       every decision here is a legibility decision at half scale:
+         * the body is 22 of 32 wide (69%) so it survives as a recognisable slab when the antennae
+           reduce to hairlines;
+         * antennae are stroke-width 2.4, not the 1.6 that looks better at 32 - below ~2 they
+           vanish into the tile at 16px;
+         * FIVE points: four link LEDs plus a separated WAN dot, at the user's request
+           ("four or five points in total"). The count is not free at this size, so the body
+           widened with it - 22 -> 23 units - and the arithmetic is the whole reason it still
+           resolves: LED radius 1.15, spacing 3.5, so the gap between adjacent dots is
+           3.5 - 2*1.15 = 1.2 units, which is 0.6px at a 16px favicon. The WAN dot sits 4.5
+           units past the last LED (gap 2.2) so it still reads as a separate port rather than
+           a fifth in the row. Five is the ceiling here; at six the gaps fall under half a
+           device pixel and the row greys into a solid bar;
+         * the LEDs are KNOCKOUTS (tile gradient shows through) rather than a third colour, so the
+           mark stays two-tone and does not need a palette entry that the wordmark would then have
+           to match.
+
+       Fixed indigo to violet (the light-theme logo-a / logo-b token pair) rather than a
+       (NB: that token pair is written without its CSS dashes on purpose - XML forbids a double
+       hyphen inside a comment, and this file previously carried one, which made it malformed
+       XML that only browsers' leniency kept rendering.)
+       prefers-color-scheme swap: browser tab strips composite favicons against their own
+       chrome, not the page, so a theme-reactive icon flickers on OS theme changes while
+       this pair stays legible on both. Same-origin file, not a data: URI - the Pages CSP
+       allows it, it caches, and it keeps the three HTML heads identical. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7.5" fill="url(#g)"/>
+  <g stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">
+    <path d="M11.2 17.8 8.2 10.6"/>
+    <path d="M20.8 17.8 23.8 10.6"/>
+  </g>
+  <rect x="4.5" y="17.4" width="23" height="9.6" rx="2.9" fill="#ffffff"/>
+  <g fill="url(#g)">
+    <circle cx="9" cy="22.2" r="1.15"/>
+    <circle cx="12.5" cy="22.2" r="1.15"/>
+    <circle cx="16" cy="22.2" r="1.15"/>
+    <circle cx="19.5" cy="22.2" r="1.15"/>
+  </g>
+  <circle cx="24" cy="22.2" r="1.15" fill="#a78bfa"/>
+</svg>
