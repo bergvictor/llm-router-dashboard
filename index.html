@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" id="themecolor" content="#eceff4">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#eceff4">
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>LLM Router — Live Dashboard</title>
 <!-- Link-preview card. This page is noindex/nofollow and stays that way: og: tags are read by
@@ -21,52 +21,14 @@
 <meta property="og:description" content="Local-first LLM routing across free cloud providers: live capacity, latency, quota and cost.">
 <meta property="og:image" content="https://llm-router-dashboard.pages.dev/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<script>
-// Stamp the theme BEFORE the body paints (stored choice -> light) so the first frame is already in
-// the right theme — no flash, and no reflow once the poller starts. routerApplyTheme() is the
-// SINGLE writer: html[data-theme] + <meta theme-color> + the toggle's aria state, so the button can
-// never advertise a theme the page is not in (it does not exist yet while this runs in <head>,
-// hence the DOMContentLoaded re-sync). Switching themes only flips one attribute: every colour on
-// this page is a custom property, so nothing re-renders, no data is refetched, the 15s poll timer
-// is untouched, and scroll position / open <details> / expanded pool rows all survive.
-// Storage key is 'router-theme' — deliberately NOT dock's 'dock-theme': the two consoles share a
-// look, not a preference.
-var THEME_META={light:'#eceff4',dark:'#0b0f17'};
-function routerApplyTheme(t){
-  t=(t==='dark')?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);
-  var m=document.getElementById('themecolor');if(m)m.setAttribute('content',THEME_META[t]);
-  var b=document.getElementById('themebtn');
-  if(b){b.setAttribute('aria-pressed',t==='dark'?'true':'false');
-        b.setAttribute('aria-label',t==='light'?'Switch to dark theme':'Switch to light theme');}
-}
-(function(){var t=null;try{t=localStorage.getItem('router-theme');}catch(e){}
- // LIGHT IS THE UNCONDITIONAL DEFAULT (user directive 2026-07-25, same as the dock console).
- // prefers-color-scheme is deliberately NOT consulted: this fleet runs a dark OS theme, so
- // honouring it silently served a dark page to someone who had asked for the light one. Only an
- // explicitly stored 'dark' overrides light.
- if(t!=='light'&&t!=='dark')t='light';
- routerApplyTheme(t);
- document.addEventListener('DOMContentLoaded',function(){routerApplyTheme(document.documentElement.getAttribute('data-theme'));});}());
-function toggleTheme(){
-  var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-  var next=cur==='dark'?'light':'dark';
-  try{localStorage.setItem('router-theme',next);}catch(e){}
-  routerApplyTheme(next);
-}
-</script>
+<!-- Light mode only: one palette, no toggle, no stored theme. -->
 <style>
-  /* ---- theme tokens ------------------------------------------------------------------------
-     Every colour on this page — chrome, status, chart series, bar tracks, tinted pills — is a
-     custom property, so a theme is exactly one attribute on <html> and costs zero re-renders.
-     LIGHT is the default scope (:root with no data-theme still resolves to it, so a page whose
-     head script somehow never ran still paints light rather than falling back to dark).
-     Light steps are AA text-grade on the card surfaces (verified: ok 5.44:1, warn 5.02:1,
-     bad 5.90:1, acc 6.29:1, local 5.47:1, cloud 7.10:1, dim 5.83:1 on #ffffff) which also puts
-     every one of them past the 3:1 non-text floor when the same token is used as a bar fill.
-     Dark keeps the exact hexes this dashboard has always shipped, so monitor.html / detail.html
-     stay in sync. ---------------------------------------------------------------------------- */
-  :root,:root[data-theme="light"]{
+  /* ---- light palette: every colour on this page — chrome, status, chart series, bar
+     tracks, tinted pills — is a custom property on :root. Text steps are AA-grade on the card
+     surfaces (verified: ok 5.44:1, warn 5.02:1, bad 5.90:1, acc 6.29:1, local 5.47:1,
+     cloud 7.10:1, dim 5.83:1 on #ffffff), which also clears the 3:1 non-text floor where the
+     same token is used as a bar fill. ---- */
+  :root{
     --bg:#eceff4;--card:#ffffff;--card2:#f5f7fa;--line:#dbe0e8;--line-strong:#b6bfcd;
     --fg:#0f172a;--dim:#5b6675;
     --ok:#0f7a37;--warn:#b45309;--bad:#c22323;--acc:#4f46e5;--cloud:#6d28d9;--local:#0f766e;
@@ -76,28 +38,13 @@ function toggleTheme(){
     --logo-a:#4f46e5;--logo-b:#7c3aed;
     --spark-line:var(--acc);--spark-fill:rgba(79,70,229,.10);
     --shadow-card:0 1px 2px rgba(15,23,42,.05);
-    /* categorical series slots — same hue family in both themes, re-stepped per surface.
-       Light set validated with the dataviz palette validator on #ffffff: lightness band PASS,
-       chroma floor PASS, normal-vision floor PASS (worst adjacent ΔE 15.3), contrast PASS
-       (all 14 >= 3:1). Every swatch on this page sits next to its text label, which is the
-       required secondary encoding for the residual amber/lime CVD adjacency. */
+    /* categorical series slots, validated with the dataviz palette validator on #ffffff:
+       lightness band PASS, chroma floor PASS, normal-vision floor PASS (worst adjacent ΔE 15.3),
+       contrast PASS (all 14 >= 3:1). Every swatch on this page sits next to its text label, which
+       is the required secondary encoding for the residual amber/lime CVD adjacency. */
     --s1:#1668c8;--s2:#c2510a;--s3:#00876a;--s4:#6d4bd6;--s5:#7d6a00;--s6:#c62e6e;--s7:#0e7fa8;
     --s8:#b3401c;--s9:#2f7d10;--s10:#4f5bd5;--s11:#9c6200;--s12:#4f8a00;--s13:#a437a4;--s14:#0e8f7c;
     color-scheme:light;
-  }
-  :root[data-theme="dark"]{
-    --bg:#0b0f17;--card:#131a26;--card2:#0f1521;--line:#1f2a3a;--line-strong:#33415a;
-    --fg:#e6edf6;--dim:#8fa3bd;
-    --ok:#2ec77a;--warn:#ffb84d;--bad:#ff5d6c;--acc:#4da3ff;--cloud:#b98cff;--local:#39d3a3;
-    --ok-bg:#12291f;--warn-bg:#2a2413;--bad-bg:#2b1418;--cloud-bg:#20182e;--local-bg:#12291f;--neutral-bg:#141c2a;
-    --bar-bg:#1b2536;--chip-bg:#1b2536;--row-hover:#161f2e;--seg-on:#152033;
-    --hdr-bg:linear-gradient(180deg,#0d131ef5,#0b0f17f2);
-    --logo-a:#3b6fe0;--logo-b:#7c4ddb;
-    --spark-line:var(--acc);--spark-fill:rgba(77,163,255,.12);
-    --shadow-card:none;
-    --s1:#4da3ff;--s2:#ff8f4d;--s3:#39d3a3;--s4:#b98cff;--s5:#ffd24d;--s6:#ff5d9e;--s7:#7bd1ff;
-    --s8:#ff7a45;--s9:#2ec77a;--s10:#8f9bff;--s11:#ffb84d;--s12:#76d94d;--s13:#e06de0;--s14:#5de0c0;
-    color-scheme:dark;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -112,10 +59,9 @@ function toggleTheme(){
      uses a glyph: one inbound node fanning out to three, which is literally what the router does.
      Inline SVG, not a file: these pages ship to Cloudflare Pages under a CSP that blocks every
      external host, and an <img> would also cost a request the 15s poll loop doesn't need.
-     Its own --logo-a/--logo-b tokens rather than reusing --acc/--cloud: the dark theme's accents
-     (#4da3ff -> #b98cff) are tuned to be readable AS TEXT on a dark card, and a white glyph on top
-     of that pair drops to ~2.3:1. The dedicated stops stay deep enough for the glyph in both
-     themes. Decorative (aria-hidden): the <h1> already names the page. */
+     Its own --logo-a/--logo-b stops rather than reusing --acc/--cloud: they match the favicon
+     gradient exactly, so the tab icon and the header tile are the same mark.
+     Decorative (aria-hidden): the <h1> already names the page. */
   .brand{display:inline-flex;align-items:center;gap:11px;min-width:0}
   /* The brandmark and wordmark are the way home. Inherit colour and drop the underline so
    the header looks unchanged; only the cursor and focus ring reveal it is a link. */
@@ -169,10 +115,8 @@ function toggleTheme(){
   .chip.alert-warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn)}
   .pill{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
   .flex{display:flex;align-items:center;gap:10px} .gap6{gap:6px}
-  /* scoped to the sparkline on purpose: a bare `svg` selector also caught the header toggle's
-     sun/moon icons and stretched them to 100% x 60px */
+  /* scoped to the sparkline on purpose: a bare `svg` selector would also catch the header logo */
   #spark{display:block;width:100%;height:60px}
-  .iconbtn svg{display:block;width:15px;height:15px;flex:none}
   .foot{padding:10px 20px;color:var(--dim);font-size:11.5px;border-top:1px solid var(--line)}
   .kv{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line)}
   .kv:last-child{border-bottom:0}
@@ -234,15 +178,6 @@ function toggleTheme(){
   .seg[aria-pressed="true"]{color:var(--fg);border-color:var(--acc);background:var(--seg-on)}
   .node-meta{display:block;margin-top:5px;line-height:1.9}
   .warn{color:var(--warn)}
-  /* theme toggle: sun/moon swap driven purely by data-theme, same control language as the dock
-     console's header button so the two pages read as one system */
-  .iconbtn{flex:none;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;
-           background:var(--card);border:1px solid var(--line-strong);border-radius:8px;color:var(--dim);cursor:pointer}
-  .iconbtn:hover{background:var(--card2);color:var(--fg);border-color:var(--acc)}
-  .iconbtn .i-sun{display:none}
-  .iconbtn .i-moon{display:inline-flex}
-  :root[data-theme="dark"] .iconbtn .i-sun{display:inline-flex}
-  :root[data-theme="dark"] .iconbtn .i-moon{display:none}
 
   @media (max-width:640px), (max-width:900px) and (hover:none){
     body{font-size:13.5px;padding-bottom:env(safe-area-inset-bottom)}
@@ -254,7 +189,6 @@ function toggleTheme(){
            padding-top:max(10px,env(safe-area-inset-top))}
     header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
     #navMonitor{min-height:44px;display:inline-flex;align-items:center;padding:0 12px}
-    .iconbtn{width:44px;height:44px}
     header .right{grid-column:1/-1;margin:0;justify-content:space-between;gap:10px;width:100%}
     .section-nav{padding:8px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left))}
     .section-nav a{min-height:44px}
@@ -396,10 +330,6 @@ function toggleTheme(){
   <div class="right">
     <span id="throughput" class="muted">– req/min</span>
     <span id="updated" class="muted" aria-live="polite">connecting…</span>
-    <button id="themebtn" class="iconbtn" type="button" aria-label="Toggle light or dark theme" aria-pressed="false" title="Toggle light / dark" onclick="toggleTheme()">
-      <svg class="i-moon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z"/></svg>
-      <svg class="i-sun" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1"/></svg>
-    </button>
   </div>
 </header>
 
@@ -552,11 +482,8 @@ const CHAIN=["cloudflare","google","cloudflare","groq","groq","groq","cerebras",
   "huggingface","ovh","ovh","ovh","ovh","kilo","openrouter"];
 
 // Shared pool -> colour map (reused by drill-down + share + per-hour chart legend/segments).
-// These are SERIES SLOTS (var(--s1..s14)), not literal hexes: the slot keeps its identity while
-// the theme picks the step that is legible on the current surface. That is what makes the theme
-// switch instant — the browser re-resolves every already-painted inline style, so nothing has to
-// be re-rendered and no data is refetched. The dark step of each slot is byte-identical to the
-// hex this page shipped before, so monitor.html / detail.html stay colour-consistent.
+// These are SERIES SLOTS (var(--s1..s14)), not literal hexes, so every chart that names a pool
+// resolves the same swatch as its legend entry.
 //   s1 blue · s2 orange · s3 aqua · s4 violet · s5 yellow · s6 magenta · s7 sky
 //   s8 orange-red · s9 green · s10 periwinkle · s11 amber · s12 lime · s13 orchid · s14 mint
 const POOL_COLORS={groq:"var(--s1)",cerebras:"var(--s3)",mistral:"var(--s2)",google:"var(--s5)",

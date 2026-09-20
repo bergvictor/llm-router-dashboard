@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" id="themecolor" content="#eceff4">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#eceff4">
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>LLM Router — Monitor</title>
 <!-- Link-preview card — see the note in index.html for why og: coexists with noindex, and why
@@ -17,42 +17,13 @@
 <meta property="og:description" content="Per-call routing monitor: which pool served, which hop won, and what it cost.">
 <meta property="og:image" content="https://llm-router-dashboard.pages.dev/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<script>
-// Stamp the theme BEFORE the body paints (localStorage override -> light) so the first frame is
-// already in the right theme — no flash. Shared with index.html / the dock console: same token
-// names, same data-theme flip, same storage key ('router-theme') so a toggle on one router page
-// carries to the other. routerApplyTheme() is the single writer: html[data-theme] +
-// <meta theme-color> + the toggle's aria state, so the button can never advertise the wrong theme
-// (it does not exist yet while this runs in <head>, hence the DOMContentLoaded re-sync).
-var THEME_META={light:'#eceff4',dark:'#0d0f13'};
-function routerApplyTheme(t){
-  t=(t==='dark')?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);
-  var m=document.getElementById('themecolor');if(m)m.setAttribute('content',THEME_META[t]);
-  var b=document.getElementById('themebtn');
-  if(b){b.setAttribute('aria-pressed',t==='dark'?'true':'false');
-        b.setAttribute('aria-label',t==='light'?'Switch to dark theme':'Switch to light theme');}
-}
-(function(){var t=null;try{t=localStorage.getItem('router-theme');}catch(e){}
- // LIGHT IS THE DEFAULT (user directive 2026-07-25). prefers-color-scheme is deliberately NOT
- // consulted: this box runs a dark OS theme, so honouring it silently served a dark page to
- // someone who asked for the light one. Only an explicit toggle (stored 'dark') overrides light.
- if(t!=='light'&&t!=='dark')t='light';
- routerApplyTheme(t);
- document.addEventListener('DOMContentLoaded',function(){routerApplyTheme(document.documentElement.getAttribute('data-theme'));});}());
-// LIVE theme switch: this flips ONE attribute on <html>. Every colour on the page is a CSS custom
-// property, so the re-skin is instant and nothing re-renders — the 15s poll timer, the scroll
-// position, the active filter / search / window / source selection and the expanded rows are all
-// untouched because no JS state is read or written here.
-function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';var next=cur==='dark'?'light':'dark';try{localStorage.setItem('router-theme',next);}catch(e){}routerApplyTheme(next);}
-</script>
+<!-- Light mode only: one palette, no toggle, no stored theme. -->
 <style>
-/* ---- theme token system: copied verbatim from the dock console (C:\coding-projects\dock\public\
-       index.html) so the router pages and the Docker console share one vocabulary. Refined light +
-       sophisticated dark, all semantic pairs AA-verified (never use #6e7781-class grays: 4.48:1
-       fails AA). The head script stamps data-theme BEFORE body paint, so :root[data-theme="dark"]
-       re-skins with no FOUC. Every rule reads var(--…), so retinting the tokens re-skins the page. */
-:root,:root[data-theme="light"]{
+/* ---- light token system: copied verbatim from the dock console (C:\coding-projects\dock\public\
+       index.html) so the router pages and the Docker console share one vocabulary. All semantic
+       pairs AA-verified (never use #6e7781-class grays: 4.48:1 fails AA). Every rule reads
+       var(--…), so retinting the tokens re-skins the page. */
+:root{
   --bg:#eceff4;--surface:#ffffff;--surface-2:#f5f7fa;--surface-3:#eef1f6;
   --border:#dbe0e8;--border-2:#e8ecf2;
   --border-strong:#8c959f; /* interactive-control boundary: 3.05:1 on white (WCAG 1.4.11) */
@@ -81,28 +52,6 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
      its own tint, 5.70:1 on white. */
   --cloud:#7c3aed;--cloud-bg:#f4efff;--cloud-bd:#dcc9fb;
   color-scheme:light;
-}
-/* ---- sophisticated midnight-slate dark theme ---- */
-:root[data-theme="dark"]{
-  --bg:#0d0f13;--surface:#161922;--surface-2:#1b1f29;--surface-3:#212633;
-  --border:#2b3140;--border-2:#242a37;
-  --border-strong:#3d4557;
-  --text:#e8ebf1;--text-2:#c3c9d6;--text-muted:#8b93a4;
-  --accent:#818cf8;--accent-strong:#a5b0ff;--accent-tint:#1a1f30;--accent-bd:#333a55;--accent-ring:rgba(129,140,248,.40);
-  --logo-a:#3b6fe0;--logo-b:#7c4ddb;
-  --success:#45d17f;--success-text:#5fd992;--success-bg:#10241a;--success-bd:#1e4a34;
-  --warn:#fbbf24;--warn-dot:#f59e0b;--warn-bg:#2a2110;--warn-bd:#574413;
-  --danger:#f87171;--danger-dot:#f87171;--danger-solid:#dc2626;--danger-bg:#2a1616;--danger-bd:#5a2a2a;
-  --stop:#8b93a4;--stop-dot:#5c6576;--stop-bg:#212633;--stop-bd:#2b3140;
-  --host-b:#67d5e8;--host-bg:#0f2a31;--host-bd:#1f4b57;
-  --tooltip-bg:#000000;--tooltip-fg:#f4f6fa;
-  --log-bg:#0b0e13;--log-fg:#d6dce4;--log-muted:#8a94a3;--log-err:#ff9b9b;--log-warn:#f5c518;
-  --log-scroll-thumb:#4b5563;--log-scroll-track:#101418;--log-sel-bg:#333a55;--log-sel-fg:#e8ebf1;
-  --sel-bg:#333a55;--sel-fg:#e8ebf1;--scroll-thumb:#626b80;--scroll-track:#161922;  /* thumb 3.30:1 on track */
-  --shadow-card:0 1px 2px rgba(0,0,0,.5);
-  --shadow-lift:0 6px 20px rgba(0,0,0,.55);--shadow-pop:0 14px 36px rgba(0,0,0,.62);
-  --cloud:#c4b5fd;--cloud-bg:#241c3a;--cloud-bd:#42356b;   /* 8.73:1 on its own tint */
-  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html{scrollbar-color:var(--scroll-thumb) var(--scroll-track);scrollbar-width:thin}
@@ -136,14 +85,6 @@ h1{font-size:16px;margin:0;font-weight:650;letter-spacing:-.01em;color:var(--tex
 a.nav{color:var(--accent);text-decoration:none;font-size:12.5px;font-weight:600;min-height:40px;display:inline-flex;align-items:center;padding:0 10px}
 a.nav:hover{color:var(--accent-strong);text-decoration:underline}
 a:focus-visible,button:focus-visible,input:focus-visible,tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* theme toggle: swaps sun/moon by data-theme; ghost button matching the console's control language */
-.iconbtn{flex:none;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;
-         background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;color:var(--text-2);cursor:pointer}
-.iconbtn:hover{background:var(--surface-2);color:var(--text)}
-.iconbtn .i-sun{display:none}
-.iconbtn .i-moon{display:inline-flex}
-:root[data-theme="dark"] .iconbtn .i-sun{display:inline-flex}
-:root[data-theme="dark"] .iconbtn .i-moon{display:none}
 .wrap{padding:18px 20px;max-width:1500px;margin:0 auto}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:14px 16px;min-width:0;overflow-x:auto}
 .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted);margin:0 0 10px}
@@ -386,10 +327,6 @@ tr.detail > td{background:var(--surface-2);border-bottom:1px solid var(--border)
   <div class="right">
     <span id="updated" class="muted" aria-live="polite">connecting…</span>
     <a class="nav" href="index.html">← Summary</a>
-    <button id="themebtn" class="iconbtn" type="button" aria-label="Toggle light or dark theme" aria-pressed="false" title="Toggle light / dark" onclick="toggleTheme()">
-      <svg class="i-moon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z"/></svg>
-      <svg class="i-sun" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1"/></svg>
-    </button>
   </div>
 </header>
 
@@ -1089,7 +1026,7 @@ function summaryLabels(scope){
 // the copy after that promised the router "keeps re-probing it", false for a pin-only provider
 // nothing routes to — which is exactly the provider that now keeps this badge longest. It also
 // does NOT assert recency: the gate deliberately has no time bound in it (an hour-old window went
-// dark for a median 14% of a real block just because traffic was quiet), so the age of the
+// quiet for a median 14% of a real block just because traffic was quiet), so the age of the
 // evidence is reported instead of being used to hide it — `unverified_s` below.
 // AND SINCE 2026-08-04 IT NO LONGER ASSERTS THAT THE VERDICT IS THE NEWEST FAILURE. The gate used
 // to require that too, which let one hop-scoped 429/5xx landing mid-block retire the badge — the

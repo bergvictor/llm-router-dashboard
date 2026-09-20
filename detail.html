@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" id="themecolor" content="#eceff4">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#eceff4">
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>LLM Router — Call detail</title>
 <!-- Link-preview card — see the note in index.html. Deliberately the GENERIC card and description:
@@ -18,44 +18,11 @@
 <meta property="og:description" content="Single-call detail view for the LLM Router dashboard.">
 <meta property="og:image" content="https://llm-router-dashboard.pages.dev/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<script>
-// Stamp the theme BEFORE the body paints (stored choice -> light) so the first frame is already in
-// the right theme — no flash. Copied from index.html / monitor.html: same token names, same
-// data-theme flip, same storage key ('router-theme'), so the toggle a viewer used on the Monitor
-// still holds when they follow a ↗ link into this page. routerApplyTheme() is the SINGLE writer:
-// html[data-theme] + <meta theme-color> + the toggle's aria state, so the button can never
-// advertise a theme the page is not in (it does not exist yet while this runs in <head>, hence the
-// DOMContentLoaded re-sync). THEME_META carries this page's own --bg pair, which is index.html's.
-var THEME_META={light:'#eceff4',dark:'#0b0f17'};
-function routerApplyTheme(t){
-  t=(t==='dark')?'dark':'light';
-  document.documentElement.setAttribute('data-theme',t);
-  var m=document.getElementById('themecolor');if(m)m.setAttribute('content',THEME_META[t]);
-  var b=document.getElementById('themebtn');
-  if(b){b.setAttribute('aria-pressed',t==='dark'?'true':'false');
-        b.setAttribute('aria-label',t==='light'?'Switch to dark theme':'Switch to light theme');}
-}
-(function(){var t=null;try{t=localStorage.getItem('router-theme');}catch(e){}
- // LIGHT IS THE DEFAULT (user directive 2026-07-25). prefers-color-scheme is deliberately NOT
- // consulted: this box runs a dark OS theme, so honouring it silently served a dark page to
- // someone who asked for the light one. Only an explicit toggle (stored 'dark') overrides light.
- if(t!=='light'&&t!=='dark')t='light';
- routerApplyTheme(t);
- document.addEventListener('DOMContentLoaded',function(){routerApplyTheme(document.documentElement.getAttribute('data-theme'));});}());
-// LIVE theme switch: this flips ONE attribute on <html>. Every colour on the page is a CSS custom
-// property, so the re-skin is instant and nothing re-renders — the loaded call, the scroll
-// position and the copy buttons' handlers are untouched because no JS state is read or written.
-function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';var next=cur==='dark'?'light':'dark';try{localStorage.setItem('router-theme',next);}catch(e){}routerApplyTheme(next);}
-</script>
+<!-- Light mode only: one palette, no toggle, no stored theme. -->
 <style>
-  /* ---- theme tokens: the subset of index.html's palette this page uses, values copied verbatim
-         from it so the three consoles cannot drift. LIGHT is the default scope (:root with no
-         data-theme still resolves to it, so a page whose head script somehow never ran still
-         paints light rather than falling back to dark); the head script stamps data-theme BEFORE
-         body paint, so :root[data-theme="dark"] re-skins with no FOUC. Every rule below reads
-         var(--…) — see tests/test_dashboard_theme_parity.py, which fails if this page and its two
-         siblings stop agreeing on the storage key, the toggle, or the token set. ---- */
-  :root,:root[data-theme="light"]{
+  /* ---- light palette: the subset of index.html's palette this page uses, values copied
+         verbatim from it so the three pages cannot drift. Every rule below reads var(--…). ---- */
+  :root{
     --bg:#eceff4;--card:#ffffff;--card2:#f5f7fa;--line:#dbe0e8;--line-strong:#b6bfcd;
     --fg:#0f172a;--dim:#5b6675;
     --ok:#0f7a37;--warn:#b45309;--bad:#c22323;--acc:#4f46e5;--cloud:#6d28d9;--local:#0f766e;
@@ -64,24 +31,14 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
     --logo-a:#4f46e5;--logo-b:#7c3aed;
     color-scheme:light;
   }
-  :root[data-theme="dark"]{
-    --bg:#0b0f17;--card:#131a26;--card2:#0f1521;--line:#1f2a3a;--line-strong:#33415a;
-    --fg:#e6edf6;--dim:#8fa3bd;
-    --ok:#2ec77a;--warn:#ffb84d;--bad:#ff5d6c;--acc:#4da3ff;--cloud:#b98cff;--local:#39d3a3;
-    --cloud-bg:#20182e;--local-bg:#12291f;
-    --hdr-bg:linear-gradient(180deg,#0d131ef5,#0b0f17f2);
-    --logo-a:#3b6fe0;--logo-b:#7c4ddb;
-    color-scheme:dark;
-  }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,Segoe UI,Roboto,system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);
          padding-top:max(14px,env(safe-area-inset-top));position:sticky;top:0;
          background:var(--hdr-bg);backdrop-filter:blur(12px);z-index:6;flex-wrap:wrap}
   h1{font-size:16px;margin:0;font-weight:650}
-  /* brandmark — same 28px tile and glyph as index.html / monitor.html, and the same --logo-*
-     stops: this page carries the full data-theme system now, so the tile switches with the rest
-     of the palette instead of being pinned to the dark pair. */
+  /* brandmark — same tile and glyph as index.html / monitor.html, and the same --logo-*
+     stops, which match the favicon gradient exactly. */
   .brand{display:inline-flex;align-items:center;gap:11px;min-width:0}
   .logo{flex:none;width:32px;height:32px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;
         background:linear-gradient(140deg,var(--logo-a),var(--logo-b));color:#fff;
@@ -90,16 +47,6 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
   .right{margin-left:auto;display:flex;gap:10px;align-items:center}
   a.nav{color:var(--acc);text-decoration:none;font-size:12.5px;font-weight:600;min-height:44px;display:inline-flex;align-items:center;padding:0 10px}
   a.nav:hover{text-decoration:underline}
-  /* theme toggle: sun/moon swap driven purely by data-theme, identical markup and rules to
-     index.html / monitor.html so the three headers read as one control language */
-  .iconbtn{flex:none;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;
-           background:var(--card);border:1px solid var(--line-strong);border-radius:8px;color:var(--dim);cursor:pointer}
-  .iconbtn:hover{background:var(--card2);color:var(--fg);border-color:var(--acc)}
-  .iconbtn svg{display:block;width:15px;height:15px;flex:none}
-  .iconbtn .i-sun{display:none}
-  .iconbtn .i-moon{display:inline-flex}
-  :root[data-theme="dark"] .iconbtn .i-sun{display:inline-flex}
-  :root[data-theme="dark"] .iconbtn .i-moon{display:none}
   .wrap{padding:18px 20px;max-width:1100px;margin:0 auto}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
   .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin:0 0 10px;
@@ -109,7 +56,7 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
   .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
   .v{font-size:13.5px;font-variant-numeric:tabular-nums;word-break:break-word}
   /* the two body panes sit ON a card, so they take the recessed surface token (--card2), the same
-     one .copy uses — the old #0b1220 was a dark-only literal with no light counterpart. */
+     one .copy uses. */
   pre{white-space:pre-wrap;word-break:break-word;background:var(--card2);border:1px solid var(--line);
       border-radius:10px;padding:14px 16px;font:12.5px/1.55 ui-monospace,Consolas,monospace;
       color:var(--fg);margin:0;max-height:60vh;overflow:auto}
@@ -129,7 +76,6 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
     header{padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));
            padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));gap:8px}
     header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65vw}
-    .iconbtn{width:44px;height:44px}
     .wrap{padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left))}
     .card{padding:12px;margin-bottom:10px;border-radius:10px}
     .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px 12px}
@@ -160,10 +106,6 @@ function toggleTheme(){var cur=document.documentElement.getAttribute('data-theme
   </span>
   <div class="right">
     <a class="nav" href="monitor.html">← back to Monitor</a>
-    <button id="themebtn" class="iconbtn" type="button" aria-label="Toggle light or dark theme" aria-pressed="false" title="Toggle light / dark" onclick="toggleTheme()">
-      <svg class="i-moon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5 5.5 5.5 0 1 0 13.5 9.5Z"/></svg>
-      <svg class="i-sun" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M13 3l-1 1M4 12l-1 1"/></svg>
-    </button>
   </div>
 </header>
 <div class="wrap" id="main">
