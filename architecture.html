@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture | LLM router</title>
+<meta name="description" content="How LLM router is built and deployed: request path, data stores, background jobs and deploy pipeline.">
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#1a1a1a;font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+.top{margin-bottom:8px;font-size:13px;color:#555}
+.top a{color:#0b5cad}
+h1{font-size:26px;line-height:1.25;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:#555;margin:0 0 24px}
+h2{font-size:17px;margin:32px 0 8px;padding-top:16px;border-top:1px solid #e3e3e3}
+p,li{max-width:70ch}
+code{background:#f2f2f2;padding:1px 5px;border-radius:4px;font-size:13px}
+pre{background:#f6f6f6;border:1px solid #e3e3e3;border-radius:6px;padding:12px 14px;overflow-x:auto;font-size:13px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin:16px 0 0;font-size:13px;color:#555}
+.diagram{margin:12px 0;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid #e8e8e8;vertical-align:top}
+th{font-weight:600;width:150px;color:#333}
+footer{margin-top:40px;padding-top:12px;border-top:1px solid #e3e3e3;font-size:13px;color:#555}
+@media (prefers-reduced-motion:reduce){*{animation:none;transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="top"><a href="/">&larr; LLM router</a></p>
+<h1>Architecture</h1>
+<p class="sub">How LLM router (https://llm-router-dashboard.pages.dev) is built, where its data lives, and how it ships.</p>
+
+<div class="meta"><span><strong>Platform:</strong> Cloudflare Pages (static)</span><span><strong>Policy review:</strong> 2026-10-10</span><span><strong>Runtime policy:</strong> <a href="monitor.html">live monitor</a></span></div>
+
+<p class="routing-policy" role="note"><strong>Routing policy · 2026-10-10:</strong> Local GPU is reserved for Tinder and Snapchat. All other callers use cloud only, with no GPU fallback. The <a href="monitor.html">monitor</a> shows the live policy when fresh runtime data is available.</p>
+
+<h2>Request path</h2>
+<div class="diagram" role="img" aria-label="Caller routing and dashboard publication: GPU reserved for Tinder and Snapchat; all other callers cloud only">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 608" width="100%" role="img" aria-label="LLM router architecture: local GPU reserved for Tinder and Snapchat; other callers cloud only, no GPU fallback">
+<rect width="1320" height="608" rx="14" fill="#0d1526"/>
+<text x="26" y="36" font-size="21" font-weight="700" fill="#ffffff" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">LLM router — backend architecture</text>
+<text x="26" y="60" font-size="13" fill="#9fb3d9" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Local GPU: Tinder / Snapchat only · Other callers: cloud only, no GPU fallback</text>
+<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6f8fd6"/></marker></defs>
+<path d="M183,286 V302 H819 V174" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="501" y="296" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">upload captures</text>
+<path d="M719,135 C660,135 660,135 601,135" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="660" y="128" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">forward</text>
+<path d="M501,174 V324 H1137 V286" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="819" y="318" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">route to models</text>
+<path d="M501,174 V208" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="491" y="191" font-size="11" fill="#c9d6f2" text-anchor="end" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">metrics</text>
+<path d="M601,247 C660,247 660,247 719,247" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="660" y="240" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">publish</text>
+<path d="M919,247 C978,247 978,135 1037,135" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="978" y="184" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">deploy</text>
+<path d="M1137,174 V346 H183 V174" stroke="#6f8fd6" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+<text x="660" y="340" font-size="11" fill="#c9d6f2" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif" paint-order="stroke" stroke="#0d1526" stroke-width="5" stroke-linejoin="round">HTTPS</text>
+<rect x="83" y="96" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="103" cy="120" r="12" fill="#ffd166"/>
+<text x="103" y="125" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">1</text>
+<text x="123" y="125" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Browser</text>
+<text x="99" y="148" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">monitor UI</text>
+<rect x="83" y="208" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="103" cy="232" r="12" fill="#ffd166"/>
+<text x="103" y="237" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">2</text>
+<text x="123" y="237" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Captures</text>
+<text x="99" y="260" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">screenshots</text>
+<rect x="401" y="96" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="421" cy="120" r="12" fill="#ffd166"/>
+<text x="421" y="125" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">3</text>
+<text x="441" y="125" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Router core</text>
+<text x="417" y="148" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">LEVITIN · caller policy</text>
+<rect x="401" y="208" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="421" cy="232" r="12" fill="#ffd166"/>
+<text x="421" y="237" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">4</text>
+<text x="441" y="237" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Dashboard pusher</text>
+<text x="417" y="260" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">dashboard_pusher.py</text>
+<rect x="719" y="96" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="739" cy="120" r="12" fill="#ffd166"/>
+<text x="739" y="125" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">5</text>
+<text x="759" y="125" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Ingest worker</text>
+<text x="735" y="148" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">captures + metrics API</text>
+<rect x="719" y="208" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="739" cy="232" r="12" fill="#ffd166"/>
+<text x="739" y="237" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">6</text>
+<text x="759" y="237" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">dashboard-cloud/</text>
+<text x="735" y="260" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">published snapshot</text>
+<rect x="1037" y="96" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="1057" cy="120" r="12" fill="#ffd166"/>
+<text x="1057" y="125" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">7</text>
+<text x="1077" y="125" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Cloudflare Pages</text>
+<text x="1053" y="148" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">llm-router-dashboard</text>
+<rect x="1037" y="208" width="200" height="78" rx="10" fill="#16213a" stroke="#4d6fb3" stroke-width="1.5"/>
+<circle cx="1057" cy="232" r="12" fill="#ffd166"/>
+<text x="1057" y="237" font-size="13" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">8</text>
+<text x="1077" y="237" font-size="13" font-weight="700" fill="#e8eefc" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Cloud + reserved GPU</text>
+<text x="1053" y="260" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">GPU: Tinder / Snapchat</text>
+<text x="1053" y="275" font-size="11.5" fill="#8ea3c7" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">Others: cloud only</text>
+<line x1="26" y1="378" x2="1294" y2="378" stroke="#2a3a5f" stroke-width="1"/>
+<circle cx="38" cy="391" r="10" fill="#ffd166"/>
+<text x="38" y="395" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">1</text>
+<text x="56" y="395" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Browser</tspan><tspan> — spend, latency, pools, GPU</tspan></text>
+<circle cx="38" cy="415" r="10" fill="#ffd166"/>
+<text x="38" y="419" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">2</text>
+<text x="56" y="419" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Captures</tspan><tspan> — vision-model input</tspan></text>
+<circle cx="38" cy="439" r="10" fill="#ffd166"/>
+<text x="38" y="443" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">3</text>
+<text x="56" y="443" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Router core</tspan><tspan> — enforces caller routing policy</tspan></text>
+<circle cx="38" cy="463" r="10" fill="#ffd166"/>
+<text x="38" y="467" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">4</text>
+<text x="56" y="467" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Dashboard pusher</tspan><tspan> — pushes metrics + pages</tspan></text>
+<circle cx="38" cy="487" r="10" fill="#ffd166"/>
+<text x="38" y="491" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">5</text>
+<text x="56" y="491" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Ingest worker</tspan><tspan> — edge intake</tspan></text>
+<circle cx="38" cy="511" r="10" fill="#ffd166"/>
+<text x="38" y="515" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">6</text>
+<text x="56" y="515" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">dashboard-cloud/</tspan><tspan> — this monitor</tspan></text>
+<circle cx="38" cy="535" r="10" fill="#ffd166"/>
+<text x="38" y="539" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">7</text>
+<text x="56" y="539" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Cloudflare Pages</tspan><tspan> — hosts the monitor</tspan></text>
+<circle cx="38" cy="559" r="10" fill="#ffd166"/>
+<text x="38" y="563" font-size="11" font-weight="800" text-anchor="middle" fill="#1a1a2e" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">8</text>
+<text x="56" y="563" font-size="12.5" fill="#c4d2ec" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif"><tspan font-weight="700">Model backends</tspan><tspan> — cloud routes; local GPU reserved for Tinder / Snapchat</tspan></text>
+</svg>
+</div>
+<ol>
+<li>Live router monitor: spend, latency, pools and GPU. Static dashboard reading router metrics.</li>
+<li>Data arrives as JSON snapshots built on the laptop, never live secrets.</li>
+<li>Rebuild scripts regenerate the pages; the push (or direct upload) is the deploy.</li>
+</ol>
+
+<h2>Data and state</h2>
+<ul>
+<li>Static HTML/JSON in the output directory — the whole site.</li>
+<li>Source data stays in the repository (data/, logs/); secrets stay out of version control.</li>
+</ul>
+
+<h2>Background work</h2>
+<ul>
+<li>dashboard_pusher.py pushes metrics.</li>
+<li>Deploys via wrangler pages deploy dashboard-cloud.</li>
+</ul>
+
+<h2>Surfaces</h2>
+<table>
+<tr><th>Public URL</th><td><a href="https://llm-router-dashboard.pages.dev">https://llm-router-dashboard.pages.dev</a></td></tr>
+<tr><th>Source</th><td><code>ai-llm/llm-router</code></td></tr>
+<tr><th>Deploy</th><td>Static directory <code>dashboard-cloud</code> deploys to project <code>llm-router-dashboard</code>.</td></tr>
+</table>
+
+<h2>Ship it</h2>
+<pre>cd ai-llm/llm-router
+npx wrangler pages deploy dashboard-cloud --project-name=llm-router-dashboard --branch=main
+curl -s -o /dev/null -w '%{http_code}' "https://llm-router-dashboard.pages.dev/architecture.html?cb=$(date +%s)"</pre>
+
+<footer>Generated from the repository — facts, not marketing. Secrets live outside version control and are never shown here.</footer>
+</div>
+</body>
+</html>
