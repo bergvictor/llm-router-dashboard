@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "status": "measured",
+  "measured_at_utc": "2026-10-19T05:14:24Z",
+  "host": "LEVITIN",
+  "model": "qwen3.8:27b-3070-hybrid",
+  "num_ctx": 4096,
+  "num_predict": 512,
+  "query_kind": "Synthetic queue arithmetic",
+  "repetitions": 2,
+  "native_high_supported": false,
+  "levels": [
+    {
+      "level": "off",
+      "median_wall_s": 2.227515,
+      "median_tokens_per_second": 3.02662,
+      "correct_answers": 0,
+      "attempts": 2,
+      "unfinished": 0
+    },
+    {
+      "level": "medium",
+      "median_wall_s": 63.46654,
+      "median_tokens_per_second": 2.477887,
+      "correct_answers": 2,
+      "attempts": 2,
+      "unfinished": 0
+    },
+    {
+      "level": "xhigh",
+      "median_wall_s": 54.236342,
+      "median_tokens_per_second": 2.430496,
+      "correct_answers": 2,
+      "attempts": 2,
+      "unfinished": 0
+    }
+  ],
+  "allocation": {
+    "vram_bytes": 5480749464,
+    "model_ram_bytes": 11746913810
+  }
+}

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 44" role="img" aria-label="LLM Router">
+  <!-- Horizontal lockup: the same mark as favicon.svg / the in-page .logo tile, plus a wordmark.
+       The mark is NOT redrawn here — it is the favicon geometry scaled 32->40 (x1.25) so the two
+       files cannot drift apart visually. A router device — body, link LEDs, two antennae —
+       replacing the earlier one-node-fans-to-three mark on 2026-08-16.
+
+       COLOUR, and why it is split: the TILE keeps the fixed indigo->violet pair for the same
+       reason favicon.svg does (it composites against unknown chrome — a README on white, a docs
+       page on dark — so a theme-reactive tile flickers or disappears). The WORDMARK switches on
+       prefers-color-scheme via the <style> below.
+
+       WHY NOT fill="currentColor" ON THE WORDMARK, which was the first attempt: this file's main
+       job is to be referenced as <img src="logo.svg"> (README, docs). An <img>-referenced SVG is
+       an independent document with no parent to inherit from, so currentColor resolves to its
+       initial value — black — and the wordmark goes INVISIBLE on GitHub's dark theme. An internal
+       media query is evaluated by the renderer in that context, so it works where inheritance
+       cannot. The in-page dashboard header does not use this file (it has its own inline .logo
+       tile), so nothing depends on inheriting a page colour here.
+
+       The LEDs knock out to the tile gradient rather than being painted a third colour, which is
+       what lets this scale cleanly: at x1.25 they are still holes in white, not 1px shapes that
+       would need their own hinting.
+
+       Sized for reuse: 208x44 with the wordmark on the mark's optical centre line, so it drops
+       into a README (`<img height="28">`) or a page header without further alignment. -->
+  <defs>
+    <linearGradient id="lr-tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .wordmark{fill:#0f172a}
+    @media (prefers-color-scheme:dark){.wordmark{fill:#e8edf5}}
+  </style>
+
+  <g transform="translate(2 2) scale(1.25)">
+    <rect width="32" height="32" rx="7.5" fill="url(#lr-tile)"/>
+    <g stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">
+      <path d="M11.2 17.8 8.2 10.6"/>
+      <path d="M20.8 17.8 23.8 10.6"/>
+    </g>
+    <rect x="4.5" y="17.4" width="23" height="9.6" rx="2.9" fill="#ffffff"/>
+    <g fill="url(#lr-tile)">
+      <circle cx="9" cy="22.2" r="1.15"/>
+      <circle cx="12.5" cy="22.2" r="1.15"/>
+      <circle cx="16" cy="22.2" r="1.15"/>
+      <circle cx="19.5" cy="22.2" r="1.15"/>
+    </g>
+    <circle cx="24" cy="22.2" r="1.15" fill="#a78bfa"/>
+  </g>
+
+  <g class="wordmark" font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+    <text x="56" y="28.5" font-size="19" font-weight="650" letter-spacing="-0.35">LLM Router</text>
+  </g>
+</svg>
